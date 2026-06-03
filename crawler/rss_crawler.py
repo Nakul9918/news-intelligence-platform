@@ -26,6 +26,9 @@ for source_name, rss_url in RSS_SOURCES.items():
     # Read RSS feed
     feed = feedparser.parse(rss_url)
 
+    # Display total articles available from current source
+    print(f"Total Articles Available: {len(feed.entries)}\n")
+
     # Take first 5 articles from each source
     for article in feed.entries[:5]:
 
@@ -51,16 +54,23 @@ for source_name, rss_url in RSS_SOURCES.items():
         # Print output on screen
         print("Source:", source_name)
         print("Title:", news_item["title"])
+        print("Link:", news_item["link"])
         print("Published:", news_item["published"])
         print("-" * 50)
 
 
 # Open news.json file
 # "w" means write mode
+# encoding='utf-8' supports special characters
 with open("data/news.json", "w", encoding="utf-8") as file:
 
     # Save list into JSON file
-    json.dump(all_news, file, indent=4)
+    json.dump(
+        all_news,
+        file,
+        indent=4,
+        ensure_ascii=False
+    )
 
 
 # Final statistics

@@ -1,3 +1,6 @@
+# RSS Sources Configuration File
+# Stores all RSS feed URLs in one place
+
 RSS_SOURCES = {
     "BBC": "https://feeds.bbci.co.uk/news/rss.xml",
 
