@@ -4,8 +4,10 @@ from newspaper import Article
 client = MongoClient("mongodb://localhost:27017/")
 db = client["news_db"]
 
-collection = db["historical_urls"]
+# ET Collection
+collection = db["historical_urls_et"]
 
+# Test only 5 articles first
 articles = collection.find(
     {
         "content": {"$exists": False}
@@ -15,6 +17,7 @@ articles = collection.find(
 for doc in articles:
 
     try:
+
         url = doc["link"]
 
         article = Article(url)
@@ -35,4 +38,5 @@ for doc in articles:
         print("Updated:", article.title)
 
     except Exception as e:
+
         print("Error:", e)
