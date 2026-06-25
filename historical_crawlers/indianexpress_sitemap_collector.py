@@ -9,14 +9,11 @@ from common_collector import (
 # Configuration
 # =====================================================
 
-SOURCE_NAME = "Economic Times"
+SOURCE_NAME = "Indian Express"
 
-COLLECTION_NAME = "historical_urls_et"
+COLLECTION_NAME = "historical_urls_indianexpress"
 
-SITEMAP_INDEX_URL = (
-    "https://economictimes.indiatimes.com/"
-    "etstatic/sitemaps/et/news/sitemap-index.xml"
-)
+SITEMAP_INDEX_URL = "https://indianexpress.com/sitemap.xml"
 
 SITEMAP_LIMIT = 1
 
@@ -49,32 +46,36 @@ def main():
     if SITEMAP_LIMIT:
         sitemaps = sitemaps[:SITEMAP_LIMIT]
 
-    total_stored = 0
+    total_processed = 0
     total_failed = 0
 
     for sitemap in sitemaps:
 
+        sitemap_url = sitemap.loc.text
+
         print("\nProcessing")
-        print(sitemap.loc.text)
+        print(sitemap_url)
 
         xml = download_xml(
-            sitemap.loc.text
+            sitemap_url
         )
 
-        urls = xml.find_all("url")
+        urls = xml.find_all(
+            "url"
+        )
 
-        stored, failed = store_urls(
+        processed, failed = store_urls(
             urls,
             collection,
             SOURCE_NAME
         )
 
-        total_stored += stored
+        total_processed += processed
         total_failed += failed
 
     print_summary(
         SOURCE_NAME,
-        total_stored,
+        total_processed,
         total_failed
     )
 

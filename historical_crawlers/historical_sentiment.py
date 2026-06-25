@@ -4,7 +4,7 @@ from transformers import pipeline
 client = MongoClient("mongodb://localhost:27017/")
 db = client["news_db"]
 
-collection = db["historical_urls_et"]
+collection = db["historical_articles"]
 
 sentiment_pipeline = pipeline(
     "sentiment-analysis"
