@@ -1,8 +1,12 @@
+from datetime import datetime, UTC
+
 from pymongo import MongoClient
 from newspaper import Article
 
 from nlp.content_cleaner import clean_content
 from nlp.summarizer import generate_summary
+from nlp.sentiment import analyze_sentiment
+from nlp.keyword_extractor import extract_keywords
 
 # =====================================================
 # Configuration
@@ -10,6 +14,8 @@ from nlp.summarizer import generate_summary
 
 MONGO_URI = "mongodb://localhost:27017/"
 DATABASE_NAME = "news_db"
+
+PIPELINE_VERSION = 2
 
 COLLECTIONS = [
 
@@ -46,9 +52,25 @@ def process_collection(collection_name):
 
     query = {
 
-        "processed": {
-            "$exists": False
-        }
+        "$or": [
+
+            {
+
+                "processing.pipeline_version": {
+                    "$exists": False
+                }
+
+            },
+
+            {
+
+                "processing.pipeline_version": {
+                    "$lt": PIPELINE_VERSION
+                }
+
+            }
+
+        ]
 
     }
 
@@ -70,13 +92,11 @@ def process_collection(collection_name):
             url = article["link"]
 
             print("\nDownloading")
-
             print(url)
 
             news = Article(url)
 
             news.download()
-
             news.parse()
 
             # =====================================================
@@ -84,7 +104,11 @@ def process_collection(collection_name):
             # =====================================================
 
             cleaned_content = clean_content(
-                news.text
+
+                news.text,
+
+                article["source"]
+
             )
 
             # =====================================================
@@ -92,11 +116,33 @@ def process_collection(collection_name):
             # =====================================================
 
             summary = generate_summary(
+
                 cleaned_content
+
             )
 
             # =====================================================
-            # Build Final Document
+            # Sentiment
+            # =====================================================
+
+            sentiment, sentiment_score = analyze_sentiment(
+
+                cleaned_content
+
+            )
+
+            # =====================================================
+            # Keywords
+            # =====================================================
+
+            keywords = extract_keywords(
+
+                cleaned_content
+
+            )
+
+            # =====================================================
+            # Final Document
             # =====================================================
 
             article_data = {
@@ -107,7 +153,39 @@ def process_collection(collection_name):
 
                 "summary": summary,
 
-                "processed": True
+                "sentiment": sentiment,
+
+                "sentiment_score": sentiment_score,
+
+                "keywords": keywords,
+
+                "processing": {
+
+                    "completed": True,
+
+                    "pipeline_version": PIPELINE_VERSION,
+
+                    "processed_at": datetime.now(UTC),
+
+                    "modules": {
+
+                        "cleaner": True,
+
+                        "summary": True,
+
+                        "sentiment": True,
+
+                        "keywords": True,
+
+                        "content_hash": False,
+
+                        "duplicate_detection": False,
+
+                        "category": False
+
+                    }
+
+                }
 
             }
 
@@ -156,9 +234,7 @@ if __name__ == "__main__":
 
     for collection_name in COLLECTIONS:
 
-        process_collection(
-            collection_name
-        )
+        process_collection(collection_name)
 
     print("\n" + "=" * 70)
     print("Historical NLP Pipeline Completed")
