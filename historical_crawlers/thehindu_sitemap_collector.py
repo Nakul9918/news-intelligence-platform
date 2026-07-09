@@ -1,9 +1,11 @@
-from common_collector import (
+from historical_crawlers.common_collector import (
     get_collection,
     download_xml,
     store_urls,
     print_summary
 )
+
+COLLECTION_NAME = "historical_urls_thehindu"
 
 # =====================================================
 # Configuration
@@ -11,11 +13,9 @@ from common_collector import (
 
 SOURCE_NAME = "The Hindu"
 
-COLLECTION_NAME = "historical_urls_thehindu"
-
 SITEMAP_URL = (
     "https://www.thehindu.com/"
-    "sitemap/googlenews/all/all.xml"
+    "sitemap/update/all.xml"
 )
 
 # =====================================================
@@ -28,21 +28,13 @@ def main():
     print(f"{SOURCE_NAME} Historical URL Collection")
     print("=" * 70)
 
-    collection = get_collection(
-        COLLECTION_NAME
-    )
+    collection = get_collection(COLLECTION_NAME)
 
-    sitemap = download_xml(
-        SITEMAP_URL
-    )
+    sitemap = download_xml(SITEMAP_URL)
 
-    urls = sitemap.find_all(
-        "url"
-    )
+    urls = sitemap.find_all("url")
 
-    print(
-        f"Total URLs Found : {len(urls)}"
-    )
+    print(f"Total URLs Found : {len(urls)}")
 
     processed, failed = store_urls(
         urls,

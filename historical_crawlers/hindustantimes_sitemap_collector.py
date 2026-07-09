@@ -4,33 +4,25 @@ from historical_crawlers.common_collector import (
     store_urls,
     print_summary
 )
+
+from config import (
+    ALLOWED_YEARS,
+    SKIP_KEYWORDS
+)
+# =====================================================
+# MongoDB Collection
+# =====================================================
+
+COLLECTION_NAME = "historical_urls_hindustantimes"
+
 # =====================================================
 # Configuration
 # =====================================================
 
-SOURCE_NAME = "Indian Express"
 
-# Common MongoDB Collection
-# MongoDB Collection
-COLLECTION_NAME = "historical_urls_indianexpress"
+SOURCE_NAME = "Hindustan Times"
 
-# Sitemap Index
-SITEMAP_INDEX_URL = "https://indianexpress.com/sitemap.xml"
-
-# Skip these sitemap types
-SKIP_KEYWORDS = [
-    "liveblog",
-    "video",
-    "photos",
-    "today",
-    "yesterday",
-    "category",
-    "news-sitemap",
-    "webstories",
-    "horoscope",
-    "aboutsitemap",
-    "section",
-]
+SITEMAP_INDEX_URL = "https://www.hindustantimes.com/sitemap/index.xml"
 
 # =====================================================
 # Main
@@ -44,9 +36,7 @@ def main():
 
     collection = get_collection(COLLECTION_NAME)
 
-    sitemap_index = download_xml(
-        SITEMAP_INDEX_URL
-    )
+    sitemap_index = download_xml(SITEMAP_INDEX_URL)
 
     sitemaps = sitemap_index.find_all("sitemap")
 
@@ -59,22 +49,20 @@ def main():
 
         sitemap_url = sitemap.loc.text.strip()
 
-        # Skip unwanted sitemap files
-        if any(
-            keyword in sitemap_url.lower()
-            for keyword in SKIP_KEYWORDS
-        ):
+        # Skip unwanted sitemap types
+        if any(keyword in sitemap_url.lower() for keyword in SKIP_KEYWORDS):
             continue
 
-        print("\n" + "=" * 70)
-        print("Processing Sitemap")
+        # Only process required years
+        if not any(year in sitemap_url for year in ALLOWED_YEARS):
+            continue
+
+        print("\nProcessing")
         print(sitemap_url)
 
         try:
 
-            xml = download_xml(
-                sitemap_url
-            )
+            xml = download_xml(sitemap_url)
 
             urls = xml.find_all("url")
 
@@ -91,7 +79,7 @@ def main():
 
         except Exception as e:
 
-            print(f"Error : {e}")
+            print(e)
 
     print_summary(
         SOURCE_NAME,

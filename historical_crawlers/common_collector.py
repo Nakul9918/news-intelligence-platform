@@ -1,26 +1,26 @@
 import time
+
 import requests
 from bs4 import BeautifulSoup
-from pymongo import MongoClient, UpdateOne
+
+from pymongo import MongoClient
+from pymongo import UpdateOne
 from pymongo.errors import BulkWriteError
+
+from config import (
+    MONGO_URI,
+    DATABASE_NAME,
+    HEADERS,
+    TIMEOUT,
+    MAX_RETRIES,
+    BATCH_SIZE,
+    MAX_ARTICLES_PER_MONTH
+)
 
 # =====================================================
 # Configuration
 # =====================================================
 
-MONGO_URI = "mongodb://localhost:27017/"
-DATABASE_NAME = "news_db"
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/137.0.0.0 Safari/537.36"
-    )
-}
-
-TIMEOUT = 60
-MAX_RETRIES = 3
 BATCH_SIZE = 500
 
 # =====================================================
@@ -59,12 +59,13 @@ def download_xml(url):
                 "xml"
             )
 
-        except Exception:
+        except Exception as e:
 
             if attempt == MAX_RETRIES - 1:
-                raise
+                raise e
 
             print(f"Retry {attempt + 1}/{MAX_RETRIES}")
+
             time.sleep(2)
 
 
@@ -83,14 +84,22 @@ def store_urls(
     processed = 0
     failed = 0
 
+    # Respect monthly limit
+    urls = urls[:MAX_ARTICLES_PER_MONTH]
+
+    print(
+        f"Collecting {len(urls)} articles "
+        f"(Limit: {MAX_ARTICLES_PER_MONTH})"
+    )
+
     for item in urls:
 
         try:
 
-            article_url = item.loc.text
+            article_url = item.loc.text.strip()
 
             published = (
-                item.lastmod.text
+                item.lastmod.text.strip()
                 if item.lastmod
                 else None
             )
@@ -129,7 +138,9 @@ def store_urls(
                     ordered=False
                 )
 
-                print(f"Processed : {processed}")
+                print(
+                    f"Processed : {processed}"
+                )
 
                 operations.clear()
 
@@ -147,21 +158,20 @@ def store_urls(
             )
 
         except BulkWriteError:
+
             pass
 
     return processed, failed
 
 
 # =====================================================
-# Summary
+# Print Summary
 # =====================================================
 
 def print_summary(
-
     source_name,
     processed,
     failed
-
 ):
 
     print("\n" + "=" * 70)

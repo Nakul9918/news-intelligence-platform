@@ -1,20 +1,21 @@
-from historical_crawlers.common_collector import (
+from common_collector import (
     get_collection,
     download_xml,
     store_urls,
     print_summary
 )
-COLLECTION_NAME = "historical_urls_et"
 
 # =====================================================
 # Configuration
 # =====================================================
 
-SOURCE_NAME = "Economic Times"
+SOURCE_NAME = "Indian Express"
+
+COLLECTION_NAME = "historical_articles"
 
 SITEMAP_URL = (
-    "https://economictimes.indiatimes.com/"
-    "etstatic/sitemaps/et/news/2026-June-1.xml"
+    "https://indianexpress.com/"
+    "sitemap.xml?yyyy=2026&mm=06&dd=01"
 )
 
 # =====================================================
@@ -27,25 +28,20 @@ def main():
     print(f"{SOURCE_NAME} Historical URL Collection")
     print("=" * 70)
 
-    # MongoDB Collection
     collection = get_collection(COLLECTION_NAME)
 
-    # Download Sitemap
     sitemap = download_xml(SITEMAP_URL)
 
-    # Extract URLs
     urls = sitemap.find_all("url")
 
     print(f"Total URLs Found : {len(urls)}")
 
-    # Store URLs
     processed, failed = store_urls(
-        urls,
-        collection,
-        SOURCE_NAME
+        urls=urls,
+        collection=collection,
+        source_name=SOURCE_NAME
     )
 
-    # Print Summary
     print_summary(
         SOURCE_NAME,
         processed,
