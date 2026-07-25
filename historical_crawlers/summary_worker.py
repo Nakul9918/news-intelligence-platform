@@ -1,7 +1,7 @@
 """
 =====================================================
 Historical Summary Worker
-Version : 1.0
+Version : 2.0
 =====================================================
 
 Reads sentiment processed articles from MongoDB
@@ -20,6 +20,13 @@ from config import (
 
 from nlp.summarizer import generate_summary
 from nlp.models import SUMMARIZER_MODEL
+
+# =====================================================
+# Configuration
+# =====================================================
+
+PROCESSING_VERSION = 2
+MIN_CONTENT_LENGTH = 100
 
 # =====================================================
 # MongoDB Connection
@@ -50,8 +57,8 @@ for collection_name in COLLECTIONS:
     ).limit(PROCESS_BATCH_SIZE)
 
     processed = 0
-    failed = 0
     skipped = 0
+    failed = 0
 
     for article in articles:
 
@@ -63,11 +70,49 @@ for collection_name in COLLECTIONS:
 
             clean_content = article.get("clean_content", "")
 
+            # -------------------------------------------------
+            # Validation
+            # -------------------------------------------------
+
             if not clean_content.strip():
 
                 skipped += 1
 
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.summary_done": False,
+                            "status.summary_failed": True,
+                            "summary_error": "Empty clean content",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
+
                 print("⚠ Skipped : Empty clean content")
+
+                continue
+
+            if len(clean_content) < MIN_CONTENT_LENGTH:
+
+                skipped += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.summary_done": False,
+                            "status.summary_failed": True,
+                            "summary_error": "Content too short",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
+
+                print("⚠ Skipped : Content too short")
 
                 continue
 
@@ -76,6 +121,19 @@ for collection_name in COLLECTIONS:
             if not summary:
 
                 skipped += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.summary_done": False,
+                            "status.summary_failed": True,
+                            "summary_error": "Summary generation failed",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
 
                 print("⚠ Skipped : Summary generation failed")
 
@@ -96,7 +154,7 @@ for collection_name in COLLECTIONS:
 
                             "model": SUMMARIZER_MODEL,
 
-                            "processing_version": 1,
+                            "processing_version": PROCESSING_VERSION,
 
                             "summarized_at": datetime.now(UTC)
 
@@ -104,7 +162,17 @@ for collection_name in COLLECTIONS:
 
                         "status.summary_done": True,
 
+                        "status.summary_failed": False,
+
                         "updated_at": datetime.now(UTC)
+
+                    },
+
+                    "$unset": {
+
+                        "summary_error": "",
+
+                        "failed_at": ""
 
                     }
 
@@ -123,9 +191,30 @@ for collection_name in COLLECTIONS:
             print("✗ Failed")
             print("Reason :", e)
 
+            collection.update_one(
+                {
+                    "_id": article["_id"]
+                },
+                {
+                    "$set": {
+
+                        "status.summary_done": False,
+
+                        "status.summary_failed": True,
+
+                        "summary_error": str(e),
+
+                        "failed_at": datetime.now(UTC),
+
+                        "updated_at": datetime.now(UTC)
+
+                    }
+                }
+            )
+
     print("\n" + "-" * 70)
     print("Processed :", processed)
     print("Skipped   :", skipped)
     print("Failed    :", failed)
 
-print("\nSummary Worker Finished.")
+print("\n✅ Summary Worker Finished.")

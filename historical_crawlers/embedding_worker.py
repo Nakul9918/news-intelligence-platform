@@ -2,7 +2,7 @@
 ======================================================
 Historical Embedding Worker
 
-Version : 1.0
+Version : 2.0
 ======================================================
 
 Generates sentence embeddings for cleaned news articles.
@@ -26,15 +26,16 @@ from nlp.embeddings import generate_embedding
 # Configuration
 # =====================================================
 
-PROCESSING_VERSION = 1.0
+PROCESSING_VERSION = 2
+MIN_CONTENT_LENGTH = 100
 
-
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_DIMENSION = 384
 # =====================================================
 # MongoDB Connection
 # =====================================================
 
 client = MongoClient(MONGO_URI)
-
 db = client[DATABASE_NAME]
 
 
@@ -53,7 +54,9 @@ for collection_name in COLLECTIONS:
     articles = collection.find(
         {
             "status.content_cleaned": True,
-            "status.embedding_done": {"$ne": True}
+            "status.embedding_done": {
+                "$ne": True
+            }
         }
     ).limit(PROCESS_BATCH_SIZE)
 
@@ -71,11 +74,49 @@ for collection_name in COLLECTIONS:
 
             clean_content = article.get("clean_content", "")
 
+            # -------------------------------------------------
+            # Validation
+            # -------------------------------------------------
+
             if not clean_content.strip():
+
+                skipped += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.embedding_done": False,
+                            "status.embedding_failed": True,
+                            "embedding_error": "Empty clean content",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
 
                 print("⚠ Empty clean content. Skipping.")
 
+                continue
+
+            if len(clean_content) < MIN_CONTENT_LENGTH:
+
                 skipped += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.embedding_done": False,
+                            "status.embedding_failed": True,
+                            "embedding_error": "Content too short",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
+
+                print("⚠ Content too short. Skipping.")
 
                 continue
 
@@ -83,9 +124,22 @@ for collection_name in COLLECTIONS:
 
             if not embedding:
 
-                print("⚠ Failed to generate embedding.")
-
                 failed += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.embedding_done": False,
+                            "status.embedding_failed": True,
+                            "embedding_error": "Embedding generation failed",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
+
+                print("⚠ Failed to generate embedding.")
 
                 continue
 
@@ -110,24 +164,58 @@ for collection_name in COLLECTIONS:
 
                         },
 
-                        "status.embedding_done": True
+                        "status.embedding_done": True,
+
+                        "status.embedding_failed": False,
+
+                        "updated_at": datetime.now(UTC)
+
+                    },
+
+                    "$unset": {
+
+                        "embedding_error": "",
+
+                        "failed_at": ""
 
                     }
+
                 }
             )
+
+            processed += 1
 
             print(
                 f"✓ Embedding Generated "
                 f"({len(embedding)} dimensions)"
             )
 
-            processed += 1
-
         except Exception as e:
+
+            failed += 1
 
             print(f"✗ Failed : {e}")
 
-            failed += 1
+            collection.update_one(
+                {
+                    "_id": article["_id"]
+                },
+                {
+                    "$set": {
+
+                        "status.embedding_done": False,
+
+                        "status.embedding_failed": True,
+
+                        "embedding_error": str(e),
+
+                        "failed_at": datetime.now(UTC),
+
+                        "updated_at": datetime.now(UTC)
+
+                    }
+                }
+            )
 
     print("\n" + "-" * 70)
     print(f"Processed : {processed}")

@@ -1,7 +1,7 @@
 """
 =====================================================
 Historical Sentiment Worker
-Version : 2.0
+Version : 3.0
 =====================================================
 
 Reads cleaned articles from MongoDB
@@ -20,12 +20,21 @@ from config import (
 
 from nlp.sentiment import analyze_sentiment
 
+
+# =====================================================
+# Configuration
+# =====================================================
+
+MIN_CONTENT_LENGTH = 100
+
+
 # =====================================================
 # MongoDB Connection
 # =====================================================
 
 client = MongoClient(MONGO_URI)
 db = client[DATABASE_NAME]
+
 
 # =====================================================
 # Process Collections
@@ -49,6 +58,7 @@ for collection_name in COLLECTIONS:
     ).limit(PROCESS_BATCH_SIZE)
 
     processed = 0
+    skipped = 0
     failed = 0
 
     for article in articles:
@@ -60,6 +70,52 @@ for collection_name in COLLECTIONS:
             print(f"\nAnalyzing : {title}")
 
             cleaned_content = article.get("clean_content", "")
+
+            # -------------------------------------------------
+            # Validation
+            # -------------------------------------------------
+
+            if not cleaned_content.strip():
+
+                skipped += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.sentiment_done": False,
+                            "status.sentiment_failed": True,
+                            "sentiment_error": "Empty cleaned content",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
+
+                print("Skipped : Empty content")
+
+                continue
+
+            if len(cleaned_content) < MIN_CONTENT_LENGTH:
+
+                skipped += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.sentiment_done": False,
+                            "status.sentiment_failed": True,
+                            "sentiment_error": "Content too short",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
+
+                print("Skipped : Content too short")
+
+                continue
 
             result = analyze_sentiment(cleaned_content)
 
@@ -76,9 +132,20 @@ for collection_name in COLLECTIONS:
 
                         "status.sentiment_done": True,
 
+                        "status.sentiment_failed": False,
+
                         "updated_at": datetime.now(UTC)
 
+                    },
+
+                    "$unset": {
+
+                        "sentiment_error": "",
+
+                        "failed_at": ""
+
                     }
+
                 }
             )
 
@@ -95,8 +162,30 @@ for collection_name in COLLECTIONS:
             print("✗ Failed")
             print("Reason :", e)
 
+            collection.update_one(
+                {
+                    "_id": article["_id"]
+                },
+                {
+                    "$set": {
+
+                        "status.sentiment_done": False,
+
+                        "status.sentiment_failed": True,
+
+                        "sentiment_error": str(e),
+
+                        "failed_at": datetime.now(UTC),
+
+                        "updated_at": datetime.now(UTC)
+
+                    }
+                }
+            )
+
     print("\n" + "-" * 70)
     print("Processed :", processed)
+    print("Skipped   :", skipped)
     print("Failed    :", failed)
 
-print("\nSentiment Worker Finished.")
+print("\n✅ Sentiment Worker Finished.")

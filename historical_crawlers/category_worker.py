@@ -1,8 +1,8 @@
 """
-=====================================================
+======================================================================
 Historical Category Worker
 Version : 3.0
-=====================================================
+======================================================================
 
 Reads cleaned news articles from MongoDB
 and classifies them using HuggingFace
@@ -25,7 +25,7 @@ from config import (
     MONGO_URI,
     DATABASE_NAME,
     COLLECTIONS,
-    PROCESS_BATCH_SIZE
+    PROCESS_BATCH_SIZE,
 )
 
 from nlp.category_classifier import classify_category
@@ -56,24 +56,16 @@ for collection_name in COLLECTIONS:
 
     collection = db[collection_name]
 
-    articles = collection.find(
-
-        {
-
-            # Cleaner must finish first
-            "status.content_cleaned": True,
-
-            # Keywords must finish first
-            "status.keywords_extracted": True,
-
-            # Skip already processed
-            "status.category_done": {
-                "$ne": True
-            }
-
+    articles = collection.find({
+        # Cleaner must finish first
+        "status.content_cleaned": True,
+        # Keywords must finish first
+        "status.keywords_extracted": True,
+        # Skip already processed
+        "status.category_done": {
+            "$ne": True
         }
-
-    ).limit(PROCESS_BATCH_SIZE)
+    }).limit(PROCESS_BATCH_SIZE)
 
     processed = 0
     skipped = 0
@@ -93,13 +85,38 @@ for collection_name in COLLECTIONS:
 
                 skipped += 1
 
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.category_done": False,
+                            "status.category_failed": True,
+                            "category_error": "Empty cleaned content",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
+
                 print("Skipped : Empty content")
 
                 continue
 
             if len(content.split()) < MIN_WORDS:
-
                 skipped += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.category_done": False,
+                            "status.category_failed": True,
+                            "category_error": "Content too short",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
 
                 print("Skipped : Content too short")
 
@@ -120,6 +137,20 @@ for collection_name in COLLECTIONS:
                 and not result["predictions"]
             ):
                 failed += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.category_done": False,
+                            "status.category_failed": True,
+                            "category_error": "Category model unavailable or classification failed",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
+
                 print("✗ Category model unavailable or classification failed")
                 continue
 
@@ -127,18 +158,25 @@ for collection_name in COLLECTIONS:
 
             collection.update_one(
                 {"_id": article["_id"]},
-                {"$set": {
-                    "category": result["category"],
-                    "category_predictions": result["predictions"],
-                    "category_metadata": {
-                        "score": result["score"],
-                        "model": "MoritzLaurer/deberta-v3-base-zeroshot-v1.1",
-                        "processing_version": PROCESSING_VERSION,
-                        "classified_at": now,
+                {
+                    "$set": {
+                        "category": result["category"],
+                        "category_predictions": result["predictions"],
+                        "category_metadata": {
+                            "score": result["score"],
+                            "model": "MoritzLaurer/deberta-v3-base-zeroshot-v1.1",
+                            "processing_version": PROCESSING_VERSION,
+                            "classified_at": now,
+                        },
+                        "status.category_done": True,
+                        "status.category_failed": False,
+                        "updated_at": now,
                     },
-                    "status.category_done": True,
-                    "updated_at": now,
-                }}
+                    "$unset": {
+                        "category_error": "",
+                        "failed_at": ""
+                    }
+                }
             )
 
             processed += 1
@@ -147,12 +185,26 @@ for collection_name in COLLECTIONS:
 
         except Exception as e:
             failed += 1
+
             print("✗ Failed")
             print(e)
 
-    print("\n" + "-" * 70)
-    print(f"Processed : {processed}")
-    print(f"Skipped   : {skipped}")
-    print(f"Failed    : {failed}")
+            collection.update_one(
+                {"_id": article["_id"]},
+                {
+                    "$set": {
+                        "status.category_done": False,
+                        "status.category_failed": True,
+                        "category_error": str(e),
+                        "failed_at": datetime.now(UTC),
+                        "updated_at": datetime.now(UTC)
+                    }
+                }
+            )
+
+        print("\n" + "-" * 70)
+        print(f"Processed : {processed}")
+        print(f"Skipped   : {skipped}")
+        print(f"Failed    : {failed}")
 
 print("\nCategory Worker Finished.")

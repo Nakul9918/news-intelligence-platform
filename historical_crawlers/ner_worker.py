@@ -1,7 +1,7 @@
 """
 =====================================================
 Historical NER Worker
-Version : 1.0
+Version : 2.0
 =====================================================
 
 Reads cleaned articles from MongoDB
@@ -20,6 +20,14 @@ from config import (
 
 from nlp.ner import extract_entities
 from nlp.models import NER_MODEL
+
+
+# =====================================================
+# Configuration
+# =====================================================
+
+PROCESSING_VERSION = 2
+MIN_CONTENT_LENGTH = 100
 
 
 # =====================================================
@@ -65,11 +73,49 @@ for collection_name in COLLECTIONS:
 
             clean_content = article.get("clean_content", "")
 
+            # -------------------------------------------------
+            # Validation
+            # -------------------------------------------------
+
             if not clean_content.strip():
 
                 skipped += 1
 
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.ner_done": False,
+                            "status.ner_failed": True,
+                            "ner_error": "Empty clean content",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
+
                 print("⚠ Skipped : Empty clean content")
+
+                continue
+
+            if len(clean_content) < MIN_CONTENT_LENGTH:
+
+                skipped += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.ner_done": False,
+                            "status.ner_failed": True,
+                            "ner_error": "Content too short",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
+
+                print("⚠ Skipped : Content too short")
 
                 continue
 
@@ -78,6 +124,19 @@ for collection_name in COLLECTIONS:
             if not entities:
 
                 skipped += 1
+
+                collection.update_one(
+                    {"_id": article["_id"]},
+                    {
+                        "$set": {
+                            "status.ner_done": False,
+                            "status.ner_failed": True,
+                            "ner_error": "No entities found",
+                            "failed_at": datetime.now(UTC),
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
 
                 print("⚠ Skipped : No entities found")
 
@@ -89,14 +148,35 @@ for collection_name in COLLECTIONS:
                 },
                 {
                     "$set": {
+
                         "entities": entities,
+
                         "ner_metadata": {
+
                             "model": NER_MODEL,
+
                             "processed_at": datetime.now(UTC),
-                            "processing_version": "1.0"
+
+                            "processing_version": PROCESSING_VERSION
+
                         },
-                        "status.ner_done": True
+
+                        "status.ner_done": True,
+
+                        "status.ner_failed": False,
+
+                        "updated_at": datetime.now(UTC)
+
+                    },
+
+                    "$unset": {
+
+                        "ner_error": "",
+
+                        "failed_at": ""
+
                     }
+
                 }
             )
 
@@ -110,8 +190,31 @@ for collection_name in COLLECTIONS:
 
             print(f"✗ Error : {e}")
 
+            collection.update_one(
+                {
+                    "_id": article["_id"]
+                },
+                {
+                    "$set": {
+
+                        "status.ner_done": False,
+
+                        "status.ner_failed": True,
+
+                        "ner_error": str(e),
+
+                        "failed_at": datetime.now(UTC),
+
+                        "updated_at": datetime.now(UTC)
+
+                    }
+                }
+            )
+
     print("\n" + "-" * 60)
     print(f"Processed : {processed}")
     print(f"Skipped   : {skipped}")
     print(f"Failed    : {failed}")
     print("-" * 60)
+
+print("\n✅ NER Worker Finished.")
