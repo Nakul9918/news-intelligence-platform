@@ -1,7 +1,7 @@
 """
 =====================================================
 News Content Cleaner Configuration
-Version : 4.0
+Version : 5.0
 =====================================================
 """
 
@@ -11,29 +11,42 @@ Version : 4.0
 
 GLOBAL_REMOVE_PHRASES = [
 
+    # ---------------------------------------------
     # Advertisements
+    # ---------------------------------------------
+
     "Advertisement",
     "Advertisements",
     "Sponsored",
     "Sponsored Content",
 
+    # ---------------------------------------------
     # Navigation
+    # ---------------------------------------------
+
     "Read More",
     "Read Next",
     "Continue Reading",
+    "Continue reading",
     "More Stories",
     "Latest News",
     "Breaking News",
     "Trending",
     "View All",
 
+    # ---------------------------------------------
     # Related Content
+    # ---------------------------------------------
+
     "Related Stories",
     "Related News",
     "Recommended Stories",
     "Recommended Articles",
 
+    # ---------------------------------------------
     # Website Sections
+    # ---------------------------------------------
+
     "Must Read",
     "Editor's Pick",
     "Explained",
@@ -44,17 +57,48 @@ GLOBAL_REMOVE_PHRASES = [
     "Live Updates",
     "Live Events",
 
+    # ---------------------------------------------
     # Subscription
+    # ---------------------------------------------
+
     "Subscribe",
     "Subscribe Now",
     "Newsletter",
+    "Unlock this story",
+    "Unlock premium content",
+    "Premium",
+    "Premium Story",
 
+    # ---------------------------------------------
     # Login
+    # ---------------------------------------------
+
     "Login",
+    "Log in",
     "Sign In",
     "Register",
+    "Already a member",
+    "Current logged-in account",
+    "Logged-in account",
 
+    # ---------------------------------------------
+    # ET Prime
+    # ---------------------------------------------
+
+    "Synopsis",
+    "ETPrime",
+    "ET Prime",
+    "Prime",
+    "Prime Member",
+    "Prime Membership",
+    "Prime credentials",
+    "Member benefits",
+    "Enjoy member benefits",
+
+    # ---------------------------------------------
     # Social
+    # ---------------------------------------------
+
     "Follow Us",
     "Join our WhatsApp",
     "WhatsApp Channel",
@@ -77,7 +121,35 @@ SOURCE_REMOVE_PHRASES = {
 
         "Economic Times WhatsApp Channel",
 
-        "You can now subscribe"
+        "You can now subscribe",
+
+        "Synopsis",
+
+        "ETPrime",
+
+        "Prime",
+
+        "Prime Member",
+
+        "Prime credentials",
+
+        "Member benefits",
+
+        "Enjoy member benefits",
+
+        "Current logged-in account",
+
+        "Logged-in account",
+
+        "Already a member",
+
+        "Unlock this story",
+
+        "Unlock premium content",
+
+        "Continue Reading",
+
+        "Read Full Story"
 
     ],
 
@@ -89,7 +161,31 @@ SOURCE_REMOVE_PHRASES = {
 
         "Economic Times WhatsApp Channel",
 
-        "You can now subscribe"
+        "You can now subscribe",
+
+        "Synopsis",
+
+        "ETPrime",
+
+        "Prime",
+
+        "Prime Member",
+
+        "Prime credentials",
+
+        "Member benefits",
+
+        "Enjoy member benefits",
+
+        "Current logged-in account",
+
+        "Logged-in account",
+
+        "Already a member",
+
+        "Unlock this story",
+
+        "Unlock premium content"
 
     ],
 
@@ -146,6 +242,30 @@ REGEX_PATTERNS = [
     # -----------------------------------------
 
     r"Sign up for.*newsletter.*",
+
+    # -----------------------------------------
+    # ET Prime
+    # -----------------------------------------
+
+    r"ETPrime.*",
+
+    r"Prime credentials.*",
+
+    r"Member benefits.*",
+
+    r"Enjoy member benefits.*",
+
+    r"Current logged-in account.*",
+
+    r"Logged-in account.*",
+
+    r"Already a member.*",
+
+    r"Unlock.*",
+
+    r"Read Full Story.*",
+
+    r"Continue Reading.*",
 
     # -----------------------------------------
     # Copyright

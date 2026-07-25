@@ -1,329 +1,228 @@
 """
-=====================================================
-Historical Content Extractor
-Version : 2.0
-=====================================================
+historical_content_extractor.py
+
+Version 8
+
+Processes pending historical articles from MongoDB.
+
+Features
+--------
+✓ Test one newspaper at a time
+✓ Skip already extracted articles
+✓ Preserve sitemap title if extractor title is empty
+✓ Store authors as ["Unknown"] if missing
+✓ Save extraction method
+✓ Continue even if one article fails
+✓ Process oldest articles first
+✓ Skip articles without URL
 """
 
-import requests
-import trafilatura
-
-from bs4 import BeautifulSoup
-from newspaper import Article
+from datetime import datetime, UTC
+import argparse
 from pymongo import MongoClient
 
-from nlp.content_cleaner import clean_content
+from historical_crawlers.extractor import extract_article
 
-from config import (
-    MONGO_URI,
-    DATABASE_NAME,
-    PROCESS_BATCH_SIZE,
-    COLLECTIONS
-)
 
 # =====================================================
-# Extract Article
+# MongoDB Configuration
 # =====================================================
 
-def extract_article(url):
+MONGO_URI = "mongodb://localhost:27017"
+DATABASE_NAME = "news_db"
+COLLECTION_NAME = "historical_articles"
 
-    # -------------------------------------------------
-    # Method 1 : newspaper3k
-    # -------------------------------------------------
-
-    try:
-
-        article = Article(url)
-
-        article.download()
-
-        article.parse()
-
-        if article.text.strip():
-
-            return {
-
-                "title": article.title,
-
-                "content": article.text,
-
-                "method": "newspaper3k"
-
-            }
-
-    except Exception:
-
-        pass
-
-    # -------------------------------------------------
-    # Method 2 : Trafilatura
-    # -------------------------------------------------
-
-    try:
-
-        downloaded = trafilatura.fetch_url(url)
-
-        if downloaded:
-
-            text = trafilatura.extract(downloaded)
-
-            if text:
-
-                return {
-
-                    "title": "",
-
-                    "content": text,
-
-                    "method": "trafilatura"
-
-                }
-
-    except Exception:
-
-        pass
-
-    # -------------------------------------------------
-    # Method 3 : BeautifulSoup
-    # -------------------------------------------------
-
-    try:
-
-        headers = {
-
-            "User-Agent": (
-
-                "Mozilla/5.0 "
-
-                "AppleWebKit/537.36 "
-
-                "Chrome/137.0 Safari/537.36"
-
-            )
-
-        }
-
-        response = requests.get(
-
-            url,
-
-            headers=headers,
-
-            timeout=30
-
-        )
-
-        response.raise_for_status()
-
-        soup = BeautifulSoup(
-
-            response.text,
-
-            "html.parser"
-
-        )
-
-        paragraphs = soup.find_all("p")
-
-        text = "\n".join(
-
-            p.get_text(strip=True)
-
-            for p in paragraphs
-
-        )
-
-        title = ""
-
-        if soup.title:
-
-            title = soup.title.get_text(strip=True)
-
-        if text:
-
-            return {
-
-                "title": title,
-
-                "content": text,
-
-                "method": "beautifulsoup"
-
-            }
-
-    except Exception:
-
-        pass
-
-    # -------------------------------------------------
-
-    return None
+BATCH_SIZE = 10
 
 
 # =====================================================
-# MongoDB
+# MongoDB Connection
 # =====================================================
 
 client = MongoClient(MONGO_URI)
-
 db = client[DATABASE_NAME]
+collection = db[COLLECTION_NAME]
+
 
 # =====================================================
-# Process Collections
+# Command Line Arguments
 # =====================================================
 
-for collection_name in COLLECTIONS:
+parser = argparse.ArgumentParser(
+    description="Historical Content Extraction Worker"
+)
 
-    print("\n" + "=" * 70)
+group = parser.add_mutually_exclusive_group(required=True)
 
-    print(f"Processing Collection : {collection_name}")
+group.add_argument(
+    "--source",
+    type=str,
+    help="Process a specific newspaper"
+)
+
+group.add_argument(
+    "--all",
+    action="store_true",
+    help="Process all newspapers"
+)
+
+args = parser.parse_args()
+
+# =====================================================
+# Main
+# =====================================================
+
+def main():
 
     print("=" * 70)
+    print("Historical Content Extraction Worker")
+    print("=" * 70)
 
-    collection = db[collection_name]
+    # =====================================================
+    # Build MongoDB Query
+    # =====================================================
 
-    articles = collection.find(
+    query = {
+        "content_extracted": {"$ne": True}
+    }
 
-        {
+    if args.source:
+        query["source"] = args.source
 
-            "status.content_extracted": {
+    selected_source = args.source if args.source else "ALL SOURCES"
 
-                "$ne": True
+    print(f"\nTesting Source : {selected_source}")
+    print(f"Batch Size     : {BATCH_SIZE}")
 
-            }
-
-        }
-
-    ).limit(PROCESS_BATCH_SIZE)
+    pending_articles = (
+        collection
+        .find(query)
+        .sort("published", 1)
+        .limit(BATCH_SIZE)
+    )
 
     processed = 0
-
+    success = 0
     failed = 0
+    skipped = 0
 
-    # =================================================
+    for article in pending_articles:
 
-    for doc in articles:
+        processed += 1
 
+        article_id = article["_id"]
+        source = article.get("source")
+        url = article.get("link")
+
+        print("\n" + "=" * 70)
+        print(f"[{processed}/{BATCH_SIZE}]")
+        print(f"{'Source':<15}: {source}")
+        print(f"{'URL':<15}: {url}")
+
+        # -------------------------------------------------
+        # Skip if URL missing
+        # -------------------------------------------------
+
+        if not url:
+
+            skipped += 1
+
+            collection.update_one(
+                {"_id": article_id},
+                {
+                    "$set": {
+                        "content_extracted": False,
+                        "error": "Missing article URL",
+                        "updated_at": datetime.now(UTC)
+                    }
+                }
+            )
+
+            print("⚠ Missing URL - Skipped")
+            continue
+       
         try:
-
-            url = doc.get("link")
-
-            if not url:
-
-                continue
-
-            print(f"\nExtracting : {url}")
-
-            # -----------------------------------------
 
             result = extract_article(url)
 
-            # -----------------------------------------
+            # --------------------------------------------
+            # Extraction failed
+            # --------------------------------------------
 
-            if not result:
-
-                collection.update_one(
-
-                    {
-
-                        "_id": doc["_id"]
-
-                    },
-
-                    {
-
-                        "$set": {
-
-                            "status.content_extracted": False,
-
-                            "extraction_error": "All extraction methods failed"
-
-                        }
-
-                    }
-
-                )
+            if result is None:
 
                 failed += 1
 
-                print("✗ Extraction Failed")
+                collection.update_one(
+                    {"_id": article_id},
+                    {
+                        "$set": {
+                            "content_extracted": False,
+                            "error": "Extraction returned None",
+                            "updated_at": datetime.now(UTC)
+                        }
+                    }
+                )
 
+                print("❌ Extraction Failed")
                 continue
 
-            # -----------------------------------------
+            title = result.get("title") or article.get("title", "")
+            authors = result.get("authors") or ["Unknown"]
 
-            cleaned_content = clean_content(
-
-                result["content"],
-
-                doc.get("source", "")
-
-            )
-
-            # -----------------------------------------
+            print(f"{'Title':<15}: {title}")
+            print(f"{'Authors':<15}: {authors}")
 
             collection.update_one(
-
+                {"_id": article_id},
                 {
-
-                    "_id": doc["_id"]
-
-                },
-
-                {
-
                     "$set": {
-
-                        "title": result["title"],
-
-                        "content": result["content"],
-
-                        "clean_content": cleaned_content,
-
+                        "title": title,
+                        "authors": authors,
+                        "content": result.get("content"),
+                        "extraction_method": result.get("method"),
                         "content_extracted": True,
-
-                        "content_cleaned": True,
-
-                        "processed": False,
-
-                        "status.content_extracted": True,
-
-                        "extraction_method": result["method"]
-
+                        "updated_at": datetime.now(UTC),
+                        "error": None
                     }
-
                 }
-
             )
 
-            processed += 1
+            success += 1
 
-            print(
-
-                f"✓ "
-
-                f"{result['method']} "
-
-                f"-> "
-
-                f"{result['title'][:70]}"
-
-            )
+            print("✅ Extraction Successful")
 
         except Exception as e:
 
             failed += 1
 
-            print(f"✗ Error : {e}")
+            collection.update_one(
+                {"_id": article_id},
+                {
+                    "$set": {
+                        "content_extracted": False,
+                        "error": str(e),
+                        "updated_at": datetime.now(UTC)
+                    }
+                }
+            )
 
-    # =================================================
+            print(f"❌ Error : {e}")
 
-    print("\n" + "-" * 70)
+    print("\n" + "=" * 70)
+    print("Extraction Summary")
+    print("=" * 70)
 
-    print(f"Processed : {processed}")
+    print(f"{'Testing Source':<18}: {selected_source}")
+    print(f"{'Processed':<18}: {processed}")
+    print(f"{'Successful':<18}: {success}")
+    print(f"{'Failed':<18}: {failed}")
+    print(f"{'Skipped':<18}: {skipped}")
 
-    print(f"Failed    : {failed}")
 
-    print("-" * 70)
+# =====================================================
+# Program Entry
+# =====================================================
 
-print("\nHistorical Content Extraction Finished.")
+if __name__ == "__main__":
+    main()

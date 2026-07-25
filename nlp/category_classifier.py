@@ -1,125 +1,222 @@
 """
 =====================================================
 News Category Classifier
-Version : 1.0
+Version : 3.0
 =====================================================
+
+Uses HuggingFace Zero-Shot Classification
+
+Model:
+    MoritzLaurer/deberta-v3-base-zeroshot-v1.1
+
+Features
+--------
+✓ Loads model once
+✓ Zero-shot classification
+✓ Confidence score
+✓ Top-3 predictions
+✓ Production ready
+✓ Exception handling
 """
 
-CATEGORY_KEYWORDS = {
+from transformers import pipeline
 
-    "Sports": [
-        "cricket", "football", "fifa", "ipl",
-        "olympics", "tennis", "badminton",
-        "hockey", "kabaddi", "match",
-        "player", "coach", "tournament"
-    ],
+# =====================================================
+# Configuration
+# =====================================================
 
-    "Business": [
-        "stock", "stocks", "share", "shares",
-        "ipo", "market", "economy",
-        "finance", "investment",
-        "bank", "company", "startup"
-    ],
+MODEL_NAME = "MoritzLaurer/deberta-v3-base-zeroshot-v1.1-all-33"
+CATEGORIES = [
 
-    "Politics": [
-        "government", "minister",
-        "parliament", "election",
-        "politics", "bjp",
-        "congress", "policy"
-    ],
+    "Politics",
 
-    "Technology": [
-        "artificial intelligence",
-        "ai",
-        "machine learning",
-        "software",
-        "hardware",
-        "google",
-        "microsoft",
-        "apple",
-        "openai",
-        "chatgpt",
-        "cybersecurity"
-    ],
+    "Business",
 
-    "Health": [
-        "doctor",
-        "hospital",
-        "medicine",
-        "covid",
-        "virus",
-        "vaccine",
-        "patient",
-        "health"
-    ],
+    "Technology",
 
-    "Entertainment": [
-        "movie",
-        "film",
-        "actor",
-        "actress",
-        "bollywood",
-        "hollywood",
-        "music",
-        "song",
-        "cinema"
-    ],
+    "Sports",
 
-    "Education": [
-        "school",
-        "college",
-        "neet",
-        "jee",
-        "exam",
-        "student",
-        "education",
-        "university"
-    ],
+    "Health",
 
-    "Crime": [
-        "police",
-        "crime",
-        "arrest",
-        "murder",
-        "fraud",
-        "court",
-        "judge"
-    ],
+    "Entertainment",
 
-    "Environment": [
-        "climate",
-        "environment",
-        "rain",
-        "weather",
-        "flood",
-        "forest"
-    ]
+    "Education",
 
-}
+    "Crime",
+
+    "Environment",
+
+    "Science",
+
+    "World",
+
+    "General"
+
+]
+
+MAX_TEXT_LENGTH = 1500
+
+TOP_K = 3
+
+# =====================================================
+# Load Model
+# =====================================================
+
+try:
+
+    classifier = pipeline(
+
+        task="zero-shot-classification",
+
+        model=MODEL_NAME,
+
+        device=-1          # CPU
+
+    )
+
+    print(f"✓ Category Model Loaded : {MODEL_NAME}")
+
+except Exception as e:
+
+    classifier = None
+
+    print("✗ Failed to load category model")
+
+    print(e)
 
 
-def classify_category(text):
+# =====================================================
+# Prepare Text
+# =====================================================
 
-    text = text.lower()
+def prepare_text(title="", content=""):
 
-    scores = {}
+    text = f"{title}. {content}"
 
-    for category, words in CATEGORY_KEYWORDS.items():
+    text = text.strip()
 
-        score = 0
+    if len(text) > MAX_TEXT_LENGTH:
 
-        for word in words:
+        text = text[:MAX_TEXT_LENGTH]
 
-            if word in text:
+    return text
 
-                score += 1
 
-        scores[category] = score
+# =====================================================
+# Classify Category
+# =====================================================
 
-    best = max(scores, key=scores.get)
+def classify_category(title="", content=""):
 
-    if scores[best] == 0:
+    """
+    Returns
 
-        return "General"
+    {
+        "category":"Technology",
 
-    return best
+        "score":0.98,
+
+        "predictions":[...]
+
+    }
+    """
+
+    if classifier is None:
+
+        return {
+
+            "category": "General",
+
+            "score": 0.0,
+
+            "predictions": []
+
+        }
+
+    text = prepare_text(title, content)
+
+    if not text:
+        return {
+            "category": "General",
+            "score": 0.0,
+            "predictions": []
+        }
+
+    try:
+
+        # Get tokenizer from the zero-shot pipeline
+        tokenizer = classifier.tokenizer
+
+        # Tokenize and truncate to model's maximum input size
+        inputs = tokenizer(
+            text,
+            truncation=True,
+            max_length=512,
+            return_tensors="pt"
+        )
+
+        # Convert truncated tokens back to text
+        truncated_text = tokenizer.decode(
+            inputs["input_ids"][0],
+            skip_special_tokens=True
+        )
+
+        result = classifier(
+            sequences=truncated_text,
+            candidate_labels=CATEGORIES,
+            multi_label=False
+        )
+
+        predictions = []
+
+        for label, score in zip(
+            result["labels"][:TOP_K],
+            result["scores"][:TOP_K]
+        ):
+            predictions.append(
+                {
+                    "label": label,
+                    "score": round(float(score), 4)
+                }
+            )
+
+        if not predictions:
+            return {
+                "category": "General",
+                "score": 0.0,
+                "predictions": []
+            }
+
+        return {
+            "category": predictions[0]["label"],
+            "score": predictions[0]["score"],
+            "predictions": predictions
+        }
+
+    except Exception as e:
+
+        print("Category Classification Error")
+        print(e)
+
+        return {
+            "category": "General",
+            "score": 0.0,
+            "predictions": []
+        }
+
+
+# =====================================================
+# Testing
+# =====================================================
+
+if __name__ == "__main__":
+
+    title = "India launches new AI chip"
+
+    content = """
+    India announced a new semiconductor manufacturing
+    policy to boost artificial intelligence and
+    chip production.
+    """
+
+    print(classify_category(title, content))

@@ -1,11 +1,11 @@
 """
 =====================================================
-Historical Sentiment Worker
-Version : 2.0
+Historical NER Worker
+Version : 1.0
 =====================================================
 
 Reads cleaned articles from MongoDB
-and performs sentiment analysis.
+and extracts named entities.
 """
 
 from datetime import datetime, UTC
@@ -18,7 +18,9 @@ from config import (
     PROCESS_BATCH_SIZE
 )
 
-from nlp.sentiment import analyze_sentiment
+from nlp.ner import extract_entities
+from nlp.models import NER_MODEL
+
 
 # =====================================================
 # MongoDB Connection
@@ -27,6 +29,7 @@ from nlp.sentiment import analyze_sentiment
 client = MongoClient(MONGO_URI)
 db = client[DATABASE_NAME]
 
+
 # =====================================================
 # Process Collections
 # =====================================================
@@ -34,21 +37,22 @@ db = client[DATABASE_NAME]
 for collection_name in COLLECTIONS:
 
     print("\n" + "=" * 70)
-    print(f"Sentiment Analysis : {collection_name}")
+    print(f"NER Generation : {collection_name}")
     print("=" * 70)
 
     collection = db[collection_name]
 
     articles = collection.find(
         {
-            "status.keywords_extracted": True,
-            "status.sentiment_done": {
+            "status.summary_done": True,
+            "status.ner_done": {
                 "$ne": True
             }
         }
     ).limit(PROCESS_BATCH_SIZE)
 
     processed = 0
+    skipped = 0
     failed = 0
 
     for article in articles:
@@ -57,11 +61,27 @@ for collection_name in COLLECTIONS:
 
             title = article.get("title", "No Title")
 
-            print(f"\nAnalyzing : {title}")
+            print(f"\nExtracting Entities : {title}")
 
-            cleaned_content = article.get("clean_content", "")
+            clean_content = article.get("clean_content", "")
 
-            result = analyze_sentiment(cleaned_content)
+            if not clean_content.strip():
+
+                skipped += 1
+
+                print("⚠ Skipped : Empty clean content")
+
+                continue
+
+            entities = extract_entities(clean_content)
+
+            if not entities:
+
+                skipped += 1
+
+                print("⚠ Skipped : No entities found")
+
+                continue
 
             collection.update_one(
                 {
@@ -69,34 +89,29 @@ for collection_name in COLLECTIONS:
                 },
                 {
                     "$set": {
-
-                        "sentiment": result["label"],
-
-                        "sentiment_score": result["score"],
-
-                        "status.sentiment_done": True,
-
-                        "updated_at": datetime.now(UTC)
-
+                        "entities": entities,
+                        "ner_metadata": {
+                            "model": NER_MODEL,
+                            "processed_at": datetime.now(UTC),
+                            "processing_version": "1.0"
+                        },
+                        "status.ner_done": True
                     }
                 }
             )
 
             processed += 1
 
-            print("✓ Sentiment Completed")
-            print(f"Label : {result['label']}")
-            print(f"Score : {result['score']}")
+            print("✓ Entities extracted successfully")
 
         except Exception as e:
 
             failed += 1
 
-            print("✗ Failed")
-            print("Reason :", e)
+            print(f"✗ Error : {e}")
 
-    print("\n" + "-" * 70)
-    print("Processed :", processed)
-    print("Failed    :", failed)
-
-print("\nSentiment Worker Finished.")
+    print("\n" + "-" * 60)
+    print(f"Processed : {processed}")
+    print(f"Skipped   : {skipped}")
+    print(f"Failed    : {failed}")
+    print("-" * 60)

@@ -18,12 +18,6 @@ from config import (
 )
 
 # =====================================================
-# Configuration
-# =====================================================
-
-BATCH_SIZE = 500
-
-# =====================================================
 # MongoDB Connection
 # =====================================================
 
@@ -113,11 +107,56 @@ def store_urls(
                     },
 
                     {
-                        "$set": {
+
+                        "$setOnInsert": {
 
                             "source": source_name,
+
                             "link": article_url,
-                            "published": published
+
+                            "published_date": published,
+
+                            "title": "",
+
+                            "authors": [],
+
+                            "content": "",
+
+                            "clean_content": "",
+
+                            "keywords": [],
+
+                            "category": "",
+
+                            "sentiment": "",
+
+                            "sentiment_score": 0.0,
+
+                            "language": "en",
+
+                            "processing_version": 1,
+
+                            "status": {
+
+                                "content_extracted": False,
+
+                                "content_cleaned": False,
+
+                                "keywords_extracted": False,
+
+                                "sentiment_done": False,
+
+                                "category_done": False
+
+                            },
+
+                            "extraction_method": "",
+
+                            "fetched_at": None,
+
+                            "updated_at": None,
+
+                            "error": None
 
                         }
 
@@ -138,15 +177,15 @@ def store_urls(
                     ordered=False
                 )
 
-                print(
-                    f"Processed : {processed}"
-                )
+                print(f"Processed : {processed}")
 
                 operations.clear()
 
-        except Exception:
+        except Exception as e:
 
             failed += 1
+
+            print(f"Error : {e}")
 
     if operations:
 

@@ -2,11 +2,13 @@
 # MongoDB Configuration
 # =====================================================
 
-MONGO_URI = "mongodb://localhost:27017/"
+MONGO_URI = "mongodb://localhost:27017"
 
 DATABASE_NAME = "news_db"
 
+# Main collection used by the complete pipeline
 COLLECTION_NAME = "historical_articles"
+
 
 # =====================================================
 # HTTP Request Configuration
@@ -24,36 +26,34 @@ TIMEOUT = 60
 
 MAX_RETRIES = 3
 
+
 # =====================================================
 # MongoDB Batch Configuration
 # =====================================================
 
 BATCH_SIZE = 500
 
+
 # =====================================================
 # Historical Collection Configuration
 # =====================================================
 
 # Collect only these years
-
 ALLOWED_YEARS = [
-
     "2024",
     "2025",
     "2026"
-
 ]
 
-# Maximum articles to collect from EACH month
-
+# Maximum articles to collect from each month
 MAX_ARTICLES_PER_MONTH = 500
+
 
 # =====================================================
 # Skip Unwanted Sitemap Types
 # =====================================================
 
 SKIP_KEYWORDS = [
-
     "photo",
     "photos",
 
@@ -61,7 +61,6 @@ SKIP_KEYWORDS = [
     "videos",
 
     "liveblog",
-
     "live-blog",
 
     "webstory",
@@ -84,39 +83,36 @@ SKIP_KEYWORDS = [
     "urdu",
 
     "podcast"
-
 ]
+
 
 # =====================================================
 # Supported News Sources
 # =====================================================
 
 SUPPORTED_SOURCES = [
-
     "Economic Times",
-
     "The Hindu",
-
     "Indian Express",
-
     "Hindustan Times"
-
 ]
 
+
 # =====================================================
-# Historical Content Extraction
+# Historical Processing Configuration
 # =====================================================
 
+# Number of documents processed in one batch
 PROCESS_BATCH_SIZE = 5
 
+
+# =====================================================
+# Collections to Process
+# =====================================================
+
+# We are using a single unified collection for the
+# complete NLP pipeline.
+
 COLLECTIONS = [
-
-    "historical_urls_et",
-
-    "historical_urls_thehindu",
-
-    "historical_urls_indianexpress",
-
-    "historical_urls_hindustantimes"
-
+    "historical_articles"
 ]
