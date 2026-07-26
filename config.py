@@ -116,3 +116,40 @@ PROCESS_BATCH_SIZE = 5
 COLLECTIONS = [
     "historical_articles"
 ]
+# =====================================================
+# Logging Configuration
+# =====================================================
+
+LOG_LEVEL = "INFO"
+
+LOG_FOLDER = "logs"
+
+CRAWLER_LOG = "logs/crawler.log"
+
+PIPELINE_LOG = "logs/pipeline.log"
+
+ERROR_LOG = "logs/error.log"
+
+
+# =====================================================
+# Request Configuration
+# =====================================================
+
+REQUEST_DELAY = 1      # seconds between requests
+
+
+# =====================================================
+# Duplicate Checking
+# =====================================================
+
+CHECK_DUPLICATES = True
+
+
+# =====================================================
+# MongoDB Collections
+# =====================================================
+
+RAW_COLLECTION = "historical_articles"
+
+FAILED_COLLECTION = "failed_articles"
+

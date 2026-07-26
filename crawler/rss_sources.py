@@ -1,12 +1,15 @@
-# RSS Sources Configuration File
-# Stores all RSS feed URLs in one place
-
 RSS_SOURCES = {
-    "BBC": "https://feeds.bbci.co.uk/news/rss.xml",
 
-    "NDTV": "https://feeds.feedburner.com/ndtvnews-top-stories",
+    "Economic Times":
+    "https://economictimes.indiatimes.com/rssfeedsdefault.cms",
 
-    "The Hindu": "https://www.thehindu.com/news/feeder/default.rss",
+    "The Hindu":
+    "https://www.thehindu.com/news/feeder/default.rss",
 
-    "Economic Times": "https://economictimes.indiatimes.com/rssfeedsdefault.cms"
+    "Indian Express":
+    "https://indianexpress.com/feed/",
+
+    "Hindustan Times":
+    "https://www.hindustantimes.com/feeds/rss/latest/rssfeed.xml"
+
 }

@@ -17,15 +17,6 @@ DATABASE_NAME = "news_db"
 
 PIPELINE_VERSION = 2
 
-COLLECTIONS = [
-
-    "historical_urls_et",
-
-    "historical_urls_thehindu",
-
-    "historical_urls_indianexpress"
-
-]
 
 TEST_MODE = True
 TEST_LIMIT = 5
@@ -37,6 +28,23 @@ TEST_LIMIT = 5
 client = MongoClient(MONGO_URI)
 
 db = client[DATABASE_NAME]
+
+# =====================================================
+# Automatically Discover Historical Collections
+# =====================================================
+
+COLLECTIONS = sorted(
+    [
+        name
+        for name in db.list_collection_names()
+        if name.startswith("historical_urls_")
+    ]
+)
+
+print("\nCollections Found:")
+
+for collection in COLLECTIONS:
+    print(f"  ✓ {collection}")
 
 # =====================================================
 # Process Collection

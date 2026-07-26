@@ -154,9 +154,9 @@ for collection_name in COLLECTIONS:
 
                         "embedding_metadata": {
 
-                            "model": "sentence-transformers/all-MiniLM-L6-v2",
+                            "model": EMBEDDING_MODEL,
 
-                            "dimension": len(embedding),
+                            "dimension": EMBEDDING_DIMENSION,
 
                             "processed_at": datetime.now(UTC),
 
