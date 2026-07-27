@@ -1,0 +1,19 @@
+[
+  {
+    "id": "1",
+    "title": "AI is Transforming Healthcare",
+    "summary": "Artificial Intelligence is helping doctors diagnose diseases.",
+    "content": "Artificial Intelligence is revolutionizing healthcare by improving diagnosis and treatment.",
+    "source": "BBC",
+    "authors": ["John Smith"],
+    "category": "Technology",
+    "published": "2026-07-27",
+    "sentiment": "POSITIVE",
+    "keywords": [
+      "Artificial Intelligence",
+      "Healthcare",
+      "Technology"
+    ],
+    "link": "https://example.com/news1"
+  }
+]
