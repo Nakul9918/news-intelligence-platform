@@ -1,3 +1,8 @@
+"""
+Project Configuration
+News Intelligence Platform
+"""
+
 # =====================================================
 # MongoDB Configuration
 # =====================================================
@@ -6,8 +11,37 @@ MONGO_URI = "mongodb://localhost:27017"
 
 DATABASE_NAME = "news_db"
 
-# Main collection used by the complete pipeline
+# Collections
 COLLECTION_NAME = "historical_articles"
+REALTIME_COLLECTION_NAME = "realtime_articles"
+
+
+# =====================================================
+# Kafka Configuration
+# =====================================================
+
+KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
+
+KAFKA_TOPIC = "news-topic-v2"
+
+KAFKA_CONSUMER_GROUP = "news-consumer-group-v2"
+
+
+# =====================================================
+# Realtime Producer Configuration
+# =====================================================
+
+# Check RSS every 1 hour
+RSS_CHECK_INTERVAL = 3600
+
+
+# =====================================================
+# Elasticsearch Configuration
+# =====================================================
+
+ELASTICSEARCH_HOST = "http://localhost:9200"
+
+ELASTICSEARCH_INDEX = "news_articles"
 
 
 # =====================================================
@@ -38,14 +72,12 @@ BATCH_SIZE = 500
 # Historical Collection Configuration
 # =====================================================
 
-# Collect only these years
 ALLOWED_YEARS = [
     "2024",
     "2025",
     "2026"
 ]
 
-# Maximum articles to collect from each month
 MAX_ARTICLES_PER_MONTH = 500
 
 
@@ -56,32 +88,20 @@ MAX_ARTICLES_PER_MONTH = 500
 SKIP_KEYWORDS = [
     "photo",
     "photos",
-
     "video",
     "videos",
-
     "liveblog",
     "live-blog",
-
     "webstory",
     "webstories",
-
     "topic",
-
     "static",
-
     "section",
-
     "education-static",
-
     "telugu",
-
     "bangla",
-
     "hindi",
-
     "urdu",
-
     "podcast"
 ]
 
@@ -102,17 +122,17 @@ SUPPORTED_SOURCES = [
 # Historical Processing Configuration
 # =====================================================
 
-# Number of documents processed in one batch
 PROCESS_BATCH_SIZE = 5
 
 
 # =====================================================
-# Collections to Process
+# Collections
 # =====================================================
 
-# We are using a single unified collection for the
-# complete NLP pipeline.
-
 COLLECTIONS = [
-    "historical_articles"
+    COLLECTION_NAME
+]
+
+REALTIME_COLLECTIONS = [
+    REALTIME_COLLECTION_NAME
 ]

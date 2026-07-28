@@ -5,6 +5,10 @@ from historical_crawlers.common_collector import (
     print_summary
 )
 
+# =====================================================
+# MongoDB Collection
+# =====================================================
+
 COLLECTION_NAME = "historical_urls_thehindu"
 
 # =====================================================
@@ -13,10 +17,7 @@ COLLECTION_NAME = "historical_urls_thehindu"
 
 SOURCE_NAME = "The Hindu"
 
-SITEMAP_URL = (
-    "https://www.thehindu.com/"
-    "sitemap/update/all.xml"
-)
+SITEMAP_URL = "https://www.thehindu.com/sitemap/update/all.xml"
 
 # =====================================================
 # Main
@@ -30,23 +31,35 @@ def main():
 
     collection = get_collection(COLLECTION_NAME)
 
-    sitemap = download_xml(SITEMAP_URL)
+    try:
 
-    urls = sitemap.find_all("url")
+        print(f"Downloading sitemap...")
+        print(SITEMAP_URL)
 
-    print(f"Total URLs Found : {len(urls)}")
+        sitemap = download_xml(SITEMAP_URL)
 
-    processed, failed = store_urls(
-        urls,
-        collection,
-        SOURCE_NAME
-    )
+        urls = sitemap.find_all("url")
 
-    print_summary(
-        SOURCE_NAME,
-        processed,
-        failed
-    )
+        print(f"\nTotal URLs Found : {len(urls)}")
+
+        processed, failed = store_urls(
+            urls,
+            collection,
+            SOURCE_NAME
+        )
+
+        print_summary(
+            SOURCE_NAME,
+            processed,
+            failed
+        )
+
+    except Exception as e:
+
+        print("\n" + "=" * 70)
+        print(f"Error while processing {SOURCE_NAME}")
+        print("=" * 70)
+        print(e)
 
 
 if __name__ == "__main__":

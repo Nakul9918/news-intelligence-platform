@@ -1,23 +1,28 @@
+from datetime import datetime
+
 from historical_crawlers.common_collector import (
     get_collection,
     download_xml,
     store_urls,
     print_summary
 )
+
+# =====================================================
+# MongoDB Collection
+# =====================================================
+
+COLLECTION_NAME = "historical_urls_indianexpress"
+
 # =====================================================
 # Configuration
 # =====================================================
 
 SOURCE_NAME = "Indian Express"
 
-# Common MongoDB Collection
-# MongoDB Collection
-COLLECTION_NAME = "historical_urls_indianexpress"
-
-# Sitemap Index
 SITEMAP_INDEX_URL = "https://indianexpress.com/sitemap.xml"
 
-# Skip these sitemap types
+HISTORICAL_YEARS = 3
+
 SKIP_KEYWORDS = [
     "liveblog",
     "video",
@@ -44,13 +49,13 @@ def main():
 
     collection = get_collection(COLLECTION_NAME)
 
-    sitemap_index = download_xml(
-        SITEMAP_INDEX_URL
-    )
+    sitemap_index = download_xml(SITEMAP_INDEX_URL)
 
     sitemaps = sitemap_index.find_all("sitemap")
 
     print(f"Total Sitemap Files : {len(sitemaps)}")
+
+    cutoff_year = datetime.now().year - HISTORICAL_YEARS
 
     total_processed = 0
     total_failed = 0
@@ -60,10 +65,19 @@ def main():
         sitemap_url = sitemap.loc.text.strip()
 
         # Skip unwanted sitemap files
-        if any(
-            keyword in sitemap_url.lower()
-            for keyword in SKIP_KEYWORDS
-        ):
+        if any(keyword in sitemap_url.lower() for keyword in SKIP_KEYWORDS):
+            continue
+
+        # Only process last 3 years
+        year_found = False
+
+        for year in range(cutoff_year, datetime.now().year + 1):
+
+            if str(year) in sitemap_url:
+                year_found = True
+                break
+
+        if not year_found:
             continue
 
         print("\n" + "=" * 70)
@@ -72,9 +86,7 @@ def main():
 
         try:
 
-            xml = download_xml(
-                sitemap_url
-            )
+            xml = download_xml(sitemap_url)
 
             urls = xml.find_all("url")
 

@@ -1,21 +1,49 @@
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
 from historical_crawlers.common_collector import (
     get_collection,
     download_xml,
     store_urls,
     print_summary
 )
-COLLECTION_NAME = "historical_urls_et"
 
 # =====================================================
 # Configuration
 # =====================================================
 
+COLLECTION_NAME = "historical_urls_et"
+
 SOURCE_NAME = "Economic Times"
 
-SITEMAP_URL = (
+BASE_URL = (
     "https://economictimes.indiatimes.com/"
-    "etstatic/sitemaps/et/news/2026-June-1.xml"
+    "etstatic/sitemaps/et/news/"
 )
+
+# =====================================================
+# Generate Last 3 Years Monthly Sitemaps
+# =====================================================
+
+def generate_sitemap_urls(years=3):
+
+    sitemap_urls = []
+
+    current = datetime.now().replace(day=1)
+    cutoff = current - relativedelta(years=years)
+
+    while current >= cutoff:
+
+        month_name = current.strftime("%B")      # January, February...
+
+        sitemap_urls.append(
+            f"{BASE_URL}{current.year}-{month_name}-1.xml"
+        )
+
+        current -= relativedelta(months=1)
+
+    return sitemap_urls
+
 
 # =====================================================
 # Main
@@ -27,29 +55,44 @@ def main():
     print(f"{SOURCE_NAME} Historical URL Collection")
     print("=" * 70)
 
-    # MongoDB Collection
     collection = get_collection(COLLECTION_NAME)
 
-    # Download Sitemap
-    sitemap = download_xml(SITEMAP_URL)
+    total_processed = 0
+    total_failed = 0
 
-    # Extract URLs
-    urls = sitemap.find_all("url")
+    sitemap_urls = generate_sitemap_urls()
 
-    print(f"Total URLs Found : {len(urls)}")
+    print(f"Total Monthly Sitemaps : {len(sitemap_urls)}")
 
-    # Store URLs
-    processed, failed = store_urls(
-        urls,
-        collection,
-        SOURCE_NAME
-    )
+    for sitemap_url in sitemap_urls:
 
-    # Print Summary
+        print(f"\nProcessing : {sitemap_url}")
+
+        try:
+
+            sitemap = download_xml(sitemap_url)
+
+            urls = sitemap.find_all("url")
+
+            print(f"URLs Found : {len(urls)}")
+
+            processed, failed = store_urls(
+                urls,
+                collection,
+                SOURCE_NAME
+            )
+
+            total_processed += processed
+            total_failed += failed
+
+        except Exception as e:
+
+            print(f"Skipping sitemap : {e}")
+
     print_summary(
         SOURCE_NAME,
-        processed,
-        failed
+        total_processed,
+        total_failed
     )
 
 

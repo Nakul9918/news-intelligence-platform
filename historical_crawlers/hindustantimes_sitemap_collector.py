@@ -1,3 +1,6 @@
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+
 from historical_crawlers.common_collector import (
     get_collection,
     download_xml,
@@ -5,10 +8,8 @@ from historical_crawlers.common_collector import (
     print_summary
 )
 
-from config import (
-    ALLOWED_YEARS,
-    SKIP_KEYWORDS
-)
+from config import SKIP_KEYWORDS
+
 # =====================================================
 # MongoDB Collection
 # =====================================================
@@ -19,10 +20,11 @@ COLLECTION_NAME = "historical_urls_hindustantimes"
 # Configuration
 # =====================================================
 
-
 SOURCE_NAME = "Hindustan Times"
 
 SITEMAP_INDEX_URL = "https://www.hindustantimes.com/sitemap/index.xml"
+
+HISTORICAL_YEARS = 3
 
 # =====================================================
 # Main
@@ -42,6 +44,8 @@ def main():
 
     print(f"Total Sitemap Files : {len(sitemaps)}")
 
+    cutoff_year = datetime.now().year - HISTORICAL_YEARS
+
     total_processed = 0
     total_failed = 0
 
@@ -53,8 +57,16 @@ def main():
         if any(keyword in sitemap_url.lower() for keyword in SKIP_KEYWORDS):
             continue
 
-        # Only process required years
-        if not any(year in sitemap_url for year in ALLOWED_YEARS):
+        # Skip old years
+        year_found = False
+
+        for year in range(cutoff_year, datetime.now().year + 1):
+
+            if str(year) in sitemap_url:
+                year_found = True
+                break
+
+        if not year_found:
             continue
 
         print("\nProcessing")
@@ -79,7 +91,7 @@ def main():
 
         except Exception as e:
 
-            print(e)
+            print(f"Error : {e}")
 
     print_summary(
         SOURCE_NAME,

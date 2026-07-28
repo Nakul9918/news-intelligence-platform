@@ -13,8 +13,7 @@ from config import (
     HEADERS,
     TIMEOUT,
     MAX_RETRIES,
-    BATCH_SIZE,
-    MAX_ARTICLES_PER_MONTH
+    BATCH_SIZE
 )
 
 # =====================================================
@@ -22,11 +21,8 @@ from config import (
 # =====================================================
 
 def get_collection(collection_name):
-
     client = MongoClient(MONGO_URI)
-
     db = client[DATABASE_NAME]
-
     return db[collection_name]
 
 
@@ -78,13 +74,7 @@ def store_urls(
     processed = 0
     failed = 0
 
-    # Respect monthly limit
-    urls = urls[:MAX_ARTICLES_PER_MONTH]
-
-    print(
-        f"Collecting {len(urls)} articles "
-        f"(Limit: {MAX_ARTICLES_PER_MONTH})"
-    )
+    print(f"\nCollecting {len(urls)} articles...")
 
     for item in urls:
 
@@ -177,7 +167,7 @@ def store_urls(
                     ordered=False
                 )
 
-                print(f"Processed : {processed}")
+                print(f"Processed {processed}/{len(urls)}")
 
                 operations.clear()
 
@@ -196,9 +186,9 @@ def store_urls(
                 ordered=False
             )
 
-        except BulkWriteError:
+        except BulkWriteError as e:
 
-            pass
+            print(f"Bulk write error : {e.details}")
 
     return processed, failed
 

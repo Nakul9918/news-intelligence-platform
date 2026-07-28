@@ -275,3 +275,36 @@ def clean_content(text: str, source: str = "") -> str:
     text = normalize_spaces(text)
 
     return text
+
+
+
+
+# temporary test
+
+
+if __name__ == "__main__":
+
+    sample = """
+Synopsis
+
+Apple faces Indian engineer's bias lawsuit.
+
+Anita Nariani Schulze is part of the Sindhi minority.
+
+Her complaint alleges discrimination.
+
+Read More
+Advertisement
+"""
+
+    cleaned = clean_content(sample, "Economic Times")
+
+    print("=" * 70)
+    print("ORIGINAL")
+    print("=" * 70)
+    print(sample)
+
+    print("=" * 70)
+    print("CLEANED")
+    print("=" * 70)
+    print(cleaned)

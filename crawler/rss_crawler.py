@@ -1,79 +1,118 @@
-# Import RSS feed parser library
-# Used to read RSS/XML feeds from news websites
-import feedparser
-
-# Import JSON library
-# Used to save collected news into JSON format
+import os
 import json
+import feedparser
+from datetime import datetime
 
-# Import all RSS feed URLs from rss_sources.py
-# Example:
-# BBC, NDTV, The Hindu, Economic Times
-from rss_sources import RSS_SOURCES
+# ==========================================================
+# RSS Sources
+# ==========================================================
 
+RSS_SOURCES = {
+    "Economic Times": [
+        "https://economictimes.indiatimes.com/rssfeedsdefault.cms"
+    ],
 
-# Empty list to store all collected news articles
-all_news = []
+    "The Hindu": [
+        "https://www.thehindu.com/news/national/feeder/default.rss",
+        "https://www.thehindu.com/business/feeder/default.rss"
+    ],
 
+    "Indian Express": [
+        "https://indianexpress.com/section/india/feed/",
+        "https://indianexpress.com/section/business/feed/"
+    ],
 
-# Loop through every news source
-# source_name = BBC
-# rss_url = https://feeds.bbci.co.uk/news/rss.xml
-for source_name, rss_url in RSS_SOURCES.items():
-
-    print(f"\nFetching news from {source_name}...\n")
-
-    # Read RSS feed
-    feed = feedparser.parse(rss_url)
-
-    # Display total articles available from current source
-    print(f"Total Articles Available: {len(feed.entries)}\n")
-
-    # Take first 5 articles from each source
-    for article in feed.entries[:5]:
-
-        # Create structured data
-        # Dictionary format
-        news_item = {
-            "source": source_name,
-
-            # Get title
-            # If title not available use N/A
-            "title": article.get("title", "N/A"),
-
-            # Get article URL
-            "link": article.get("link", "N/A"),
-
-            # Get publication date
-            "published": article.get("published", "N/A")
-        }
-
-        # Store article inside list
-        all_news.append(news_item)
-
-        # Print output on screen
-        print("Source:", source_name)
-        print("Title:", news_item["title"])
-        print("Link:", news_item["link"])
-        print("Published:", news_item["published"])
-        print("-" * 50)
+    "Hindustan Times": [
+        "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",
+        "https://www.hindustantimes.com/feeds/rss/business/rssfeed.xml"
+    ]
+}
 
 
-# Open news.json file
-# "w" means write mode
-# encoding='utf-8' supports special characters
-with open("data/news.json", "w", encoding="utf-8") as file:
+# ==========================================================
+# Fetch News
+# ==========================================================
 
-    # Save list into JSON file
-    json.dump(
-        all_news,
-        file,
-        indent=4,
-        ensure_ascii=False
-    )
+def fetch_news():
+
+    all_news = []
+    seen_links = set()
+
+    print("=" * 60)
+    print("Fetching Latest News...")
+    print("=" * 60)
+
+    for source_name, urls in RSS_SOURCES.items():
+
+        print(f"\nSource : {source_name}")
+
+        for url in urls:
+
+            try:
+                feed = feedparser.parse(url)
+
+                if feed.bozo:
+                    print(f"Skipping invalid feed : {url}")
+                    continue
+
+                print(f"Fetched {len(feed.entries)} articles")
+
+                for entry in feed.entries:
+
+                    link = entry.get("link", "").strip()
+
+                    if not link:
+                        continue
+
+                    if link in seen_links:
+                        continue
+
+                    seen_links.add(link)
+
+                    article = {
+                        "source": source_name,
+                        "title": entry.get("title", "").strip(),
+                        "link": link,
+                        "summary": entry.get("summary", "").strip(),
+                        "published": entry.get("published", ""),
+                        "created_at": datetime.utcnow().isoformat(),
+                        "updated_at": datetime.utcnow().isoformat()
+                    }
+
+                    all_news.append(article)
+
+            except Exception as e:
+                print(f"Error while reading {url}")
+                print(e)
+
+    # ==========================================================
+    # Save Backup JSON
+    # ==========================================================
+
+    os.makedirs("data", exist_ok=True)
+
+    with open("data/news.json", "w", encoding="utf-8") as file:
+        json.dump(
+            all_news,
+            file,
+            indent=4,
+            ensure_ascii=False
+        )
+
+    print("\n" + "=" * 60)
+    print(f"Total Articles Collected : {len(all_news)}")
+    print("Backup saved to data/news.json")
+    print("=" * 60)
+
+    return all_news
 
 
-# Final statistics
-print(f"\nTotal Articles Collected: {len(all_news)}")
+# ==========================================================
+# Main
+# ==========================================================
 
-print("News saved to data/news.json")
+if __name__ == "__main__":
+
+    news = fetch_news()
+
+    print(f"\nCollected {len(news)} articles.")
