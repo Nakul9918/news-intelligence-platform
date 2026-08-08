@@ -1,18 +1,25 @@
 import os
-
 from dotenv import load_dotenv
 
 load_dotenv()
 
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 
-MONGO_URI = os.getenv("MONGO_URI")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "news_db")
 
-DATABASE_NAME = os.getenv("DATABASE_NAME")
+HISTORICAL_COLLECTION = os.getenv(
+    "HISTORICAL_COLLECTION",
+    "historical_articles"
+)
 
-HISTORICAL_COLLECTION = os.getenv("HISTORICAL_COLLECTION")
+REALTIME_COLLECTION = os.getenv(
+    "REALTIME_COLLECTION",
+    "realtime_articles"
+)
 
-REALTIME_COLLECTION = os.getenv("REALTIME_COLLECTION")
-
-ELASTICSEARCH_URL = os.getenv("ELASTICSEARCH_URL")
+ELASTICSEARCH_URL = os.getenv(
+    "ELASTICSEARCH_URL",
+    "http://localhost:9200"
+)
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

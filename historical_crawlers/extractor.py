@@ -16,6 +16,7 @@ from newspaper import Article
 import trafilatura
 import requests
 from bs4 import BeautifulSoup
+import re
 
 
 # =====================================================
@@ -125,18 +126,24 @@ def is_valid_url(url):
     return True
 
 
-# =====================================================
-# Clean Text
-# =====================================================
 
 def clean_text(text):
 
     if not text:
         return ""
 
-    return " ".join(str(text).split())
+    text = str(text)
 
+    # Normalize line endings
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
 
+    # Remove extra spaces but preserve newlines
+    text = re.sub(r"[ \t]+", " ", text)
+
+    # Remove extra blank lines
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    return text.strip()
 # =====================================================
 # Validate Extracted Content
 # =====================================================
@@ -468,7 +475,7 @@ def extract_with_bs4(url):
             "authors": authors,
 
             "content": content,
-            
+
             "method": "beautifulsoup"
 
         }

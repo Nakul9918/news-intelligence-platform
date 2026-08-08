@@ -11,17 +11,27 @@ from backend.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# =====================================================
+# Projection
+# =====================================================
+
 NEWS_PROJECTION = {
     "title": 1,
     "summary": 1,
+    "description": 1,
     "source": 1,
     "category": 1,
     "sentiment": 1,
     "published": 1,
+    "created_at": 1,
     "link": 1,
     "keywords": 1
 }
 
+
+# =====================================================
+# Get All News
+# =====================================================
 
 def get_all_realtime_news(skip=0, limit=20):
 
@@ -38,6 +48,10 @@ def get_all_realtime_news(skip=0, limit=20):
 
     return serialize_articles(news)
 
+
+# =====================================================
+# Get News By ID
+# =====================================================
 
 def get_realtime_news_by_id(news_id):
 
@@ -63,6 +77,10 @@ def get_realtime_news_by_id(news_id):
         return None
 
 
+# =====================================================
+# Search News
+# =====================================================
+
 def search_realtime_news(query, skip=0, limit=20):
 
     logger.info(f"Searching realtime news | query={query}")
@@ -81,14 +99,16 @@ def search_realtime_news(query, skip=0, limit=20):
                 }
             }
         )
-        .sort([
-            (
-                "score",
-                {
-                    "$meta": "textScore"
-                }
-            )
-        ])
+        .sort(
+            [
+                (
+                    "score",
+                    {
+                        "$meta": "textScore"
+                    }
+                )
+            ]
+        )
         .skip(skip)
         .limit(limit)
     )
@@ -97,6 +117,10 @@ def search_realtime_news(query, skip=0, limit=20):
 
     return serialize_articles(news)
 
+
+# =====================================================
+# Latest News
+# =====================================================
 
 def get_latest_realtime_news(skip=0, limit=20):
 
@@ -114,6 +138,10 @@ def get_latest_realtime_news(skip=0, limit=20):
     return serialize_articles(news)
 
 
+# =====================================================
+# Category Filter
+# =====================================================
+
 def get_realtime_news_by_category(category, skip=0, limit=20):
 
     logger.info(f"Fetching realtime category={category}")
@@ -121,7 +149,7 @@ def get_realtime_news_by_category(category, skip=0, limit=20):
     news = list(
         realtime_collection.find(
             {
-                "category": {
+                "category.category": {
                     "$regex": f"^{category}$",
                     "$options": "i"
                 }
@@ -136,6 +164,10 @@ def get_realtime_news_by_category(category, skip=0, limit=20):
 
     return serialize_articles(news)
 
+
+# =====================================================
+# Source Filter
+# =====================================================
 
 def get_realtime_news_by_source(source, skip=0, limit=20):
 
@@ -160,6 +192,10 @@ def get_realtime_news_by_source(source, skip=0, limit=20):
     return serialize_articles(news)
 
 
+# =====================================================
+# Sentiment Filter
+# =====================================================
+
 def get_realtime_news_by_sentiment(sentiment, skip=0, limit=20):
 
     logger.info(f"Fetching realtime sentiment={sentiment}")
@@ -167,7 +203,7 @@ def get_realtime_news_by_sentiment(sentiment, skip=0, limit=20):
     news = list(
         realtime_collection.find(
             {
-                "sentiment": {
+                "sentiment.label": {
                     "$regex": f"^{sentiment}$",
                     "$options": "i"
                 }
@@ -183,6 +219,10 @@ def get_realtime_news_by_sentiment(sentiment, skip=0, limit=20):
     return serialize_articles(news)
 
 
+# =====================================================
+# Keyword Filter
+# =====================================================
+
 def get_realtime_news_by_keyword(keyword, skip=0, limit=20):
 
     logger.info(f"Searching realtime keyword={keyword}")
@@ -190,7 +230,7 @@ def get_realtime_news_by_keyword(keyword, skip=0, limit=20):
     news = list(
         realtime_collection.find(
             {
-                "keywords": {
+                "keywords.text": {
                     "$regex": keyword,
                     "$options": "i"
                 }

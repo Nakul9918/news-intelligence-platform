@@ -12,10 +12,11 @@ Store Raw Article in MongoDB
     ↓
 Run Realtime NLP Pipeline
 """
-print("Consumer file started")
-import json
-from datetime import datetime, UTC
 
+import json
+import traceback
+from datetime import datetime, UTC
+print("Consumer file started")
 from kafka import KafkaConsumer
 from pymongo import MongoClient
 
@@ -133,7 +134,10 @@ try:
 
         print("\nStarting Realtime NLP Pipeline...")
 
-        success = process_article(article_id)
+        success = process_article(
+            article_id,
+            collection
+)
 
         if success:
 
@@ -175,13 +179,25 @@ except KeyboardInterrupt:
 
 except Exception as e:
 
-    print(f"\nConsumer Error : {e}")
+    print("\n" + "=" * 70)
+    print("Consumer Error")
+    print("=" * 70)
 
+    traceback.print_exc()
+
+    print("\nError Type :", type(e).__name__)
+    print("Error      :", e)
 
 finally:
 
-    consumer.close()
+    try:
+        consumer.close()
+    except Exception:
+        pass
 
-    client.close()
+    try:
+        client.close()
+    except Exception:
+        pass
 
     print("\nKafka Consumer Closed.")

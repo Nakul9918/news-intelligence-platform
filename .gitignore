@@ -15,5 +15,6 @@ venv/
 # VS Code
 .vscode/
 
-# Jupyter
-.ipynb_checkpoints/
+# Logs and Runtime PIDs
+logs/
+runtime/

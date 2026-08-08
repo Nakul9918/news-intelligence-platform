@@ -61,6 +61,11 @@ def process_collection(collection_name):
                 }
 
             },
+            {
+                "nlp_completed": {
+                    "$exists": True
+                }
+            }
 
             {
 

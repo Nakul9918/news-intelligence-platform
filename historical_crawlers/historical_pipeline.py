@@ -1,94 +1,102 @@
 """
-=====================================================
-Historical ETL Pipeline
-Version : 2.0
-=====================================================
+=========================================================
+Historical NLP Pipeline
+
+Runs the Realtime NLP Pipeline
+for all extracted historical articles.
+
+Version : 4.0
+=========================================================
 """
 
-import subprocess
-import sys
-import time
+from pymongo import MongoClient
+
+from realtime_pipeline.realtime_nlp_pipeline import process_article
 
 # =====================================================
-# Pipeline Workers
+# MongoDB
 # =====================================================
 
-WORKERS = [
+MONGO_URI = "mongodb://localhost:27017"
 
-    (
-        "Content Extraction",
-        "historical_crawlers.historical_content_extractor"
-    ),
+DATABASE_NAME = "news_db"
 
-    (
-        "Content Cleaning",
-        "historical_crawlers.cleaner_worker"
-    ),
+COLLECTIONS = [
 
-    (
-        "Keyword Extraction",
-        "historical_crawlers.keyword_worker"
-    ),
+    "historical_urls_et",
 
-    (
-        "Sentiment Analysis",
-        "historical_crawlers.sentiment_worker"
-    ),
+    "historical_urls_thehindu",
 
-    (
-        "Category Classification",
-        "historical_crawlers.category_worker"
-    )
+    "historical_urls_indianexpress",
+
+    "historical_urls_hindustantimes"
 
 ]
 
 # =====================================================
-# Start Pipeline
+# MongoDB Connection
 # =====================================================
 
-print("\n" + "=" * 70)
-print("Historical ETL Pipeline Started")
-print("=" * 70)
+client = MongoClient(MONGO_URI)
 
-pipeline_start = time.time()
+db = client[DATABASE_NAME]
 
 # =====================================================
-# Execute Workers
+# Process Collections
 # =====================================================
 
-for step_name, worker in WORKERS:
+for collection_name in COLLECTIONS:
 
     print("\n" + "=" * 70)
-    print(f"Step   : {step_name}")
-    print(f"Worker : {worker}")
+    print(f"Processing Collection : {collection_name}")
     print("=" * 70)
 
-    start_time = time.time()
+    collection = db[collection_name]
 
-    result = subprocess.run(
-        [sys.executable, "-m", worker]
-    )
+    articles = collection.find(
+    {
+        "processing.status": {
+            "$ne": "COMPLETED"
+        }
+    }
+)
 
-    end_time = time.time()
+    processed = 0
 
-    if result.returncode != 0:
+    failed = 0
 
-        print("\n" + "=" * 70)
-        print(f"FAILED : {step_name}")
-        print("=" * 70)
+    for article in articles:
 
-        sys.exit(1)
+        try:
 
-    print(f"\nCompleted : {step_name}")
-    print(f"Time Taken : {round(end_time - start_time, 2)} seconds")
+            success = process_article(
 
-# =====================================================
-# Finish
-# =====================================================
+                str(article["_id"]),
 
-pipeline_end = time.time()
+                collection
 
-print("\n" + "=" * 70)
-print("Historical ETL Pipeline Finished Successfully")
-print(f"Total Time : {round(pipeline_end - pipeline_start, 2)} seconds")
-print("=" * 70)
+            )
+
+            if success:
+
+                processed += 1
+
+            else:
+
+                failed += 1
+
+        except Exception as e:
+
+            failed += 1
+
+            print(e)
+
+    print()
+
+    print(f"Processed : {processed}")
+
+    print(f"Failed    : {failed}")
+
+client.close()
+
+print("\nHistorical Pipeline Completed.")

@@ -29,6 +29,14 @@ RSS_SOURCES = {
 }
 
 
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/137.0.0.0 Safari/537.36"
+    )
+}
+
 # ==========================================================
 # Fetch News
 # ==========================================================
@@ -49,10 +57,10 @@ def fetch_news():
         for url in urls:
 
             try:
-                feed = feedparser.parse(url)
+                feed = feedparser.parse(url, request_headers=HEADERS)
 
-                if feed.bozo:
-                    print(f"Skipping invalid feed : {url}")
+                if not feed.entries:
+                    print(f"No entries found in feed : {url}")
                     continue
 
                 print(f"Fetched {len(feed.entries)} articles")
@@ -69,14 +77,37 @@ def fetch_news():
 
                     seen_links.add(link)
 
+                    import hashlib
+                    article_id = hashlib.sha256(link.encode("utf-8")).hexdigest()
+                    now_str = datetime.utcnow().isoformat()
+
                     article = {
-                        "source": source_name,
-                        "title": entry.get("title", "").strip(),
+                        "article_id": article_id,
                         "link": link,
-                        "summary": entry.get("summary", "").strip(),
-                        "published": entry.get("published", ""),
-                        "created_at": datetime.utcnow().isoformat(),
-                        "updated_at": datetime.utcnow().isoformat()
+                        "source": {
+                            "name": source_name,
+                            "country": "India",
+                            "language": "en",
+                            "type": "rss"
+                        },
+                        "title": entry.get("title", "").strip(),
+                        "description": entry.get("summary", "").strip(),
+                        "content": "",
+                        "clean_content": "",
+                        "authors": ["Unknown"],
+                        "language": "en",
+                        "published_date": entry.get("published", ""),
+                        "published_datetime": now_str,
+                        "created_at": now_str,
+                        "updated_at": now_str,
+                        "fetched_at": now_str,
+                        "last_pipeline_update": now_str,
+                        "ingestion_type": "realtime",
+                        "processing": {
+                            "status": "PENDING",
+                            "stage": "ingested",
+                            "retry_count": 0
+                        }
                     }
 
                     all_news.append(article)

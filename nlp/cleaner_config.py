@@ -1,7 +1,8 @@
 """
 =====================================================
 News Content Cleaner Configuration
-Version : 5.0
+Version : 6.0
+Production Ready
 =====================================================
 """
 
@@ -14,7 +15,6 @@ GLOBAL_REMOVE_PHRASES = [
     # ---------------------------------------------
     # Advertisements
     # ---------------------------------------------
-
     "Advertisement",
     "Advertisements",
     "Sponsored",
@@ -23,11 +23,9 @@ GLOBAL_REMOVE_PHRASES = [
     # ---------------------------------------------
     # Navigation
     # ---------------------------------------------
-
     "Read More",
     "Read Next",
     "Continue Reading",
-    "Continue reading",
     "More Stories",
     "Latest News",
     "Breaking News",
@@ -37,7 +35,6 @@ GLOBAL_REMOVE_PHRASES = [
     # ---------------------------------------------
     # Related Content
     # ---------------------------------------------
-
     "Related Stories",
     "Related News",
     "Recommended Stories",
@@ -46,7 +43,6 @@ GLOBAL_REMOVE_PHRASES = [
     # ---------------------------------------------
     # Website Sections
     # ---------------------------------------------
-
     "Must Read",
     "Editor's Pick",
     "Explained",
@@ -60,51 +56,26 @@ GLOBAL_REMOVE_PHRASES = [
     # ---------------------------------------------
     # Subscription
     # ---------------------------------------------
-
     "Subscribe",
     "Subscribe Now",
     "Newsletter",
-    "Unlock this story",
-    "Unlock premium content",
-    "Premium",
-    "Premium Story",
 
     # ---------------------------------------------
     # Login
     # ---------------------------------------------
-
     "Login",
     "Log in",
     "Sign In",
     "Register",
-    "Already a member",
-    "Current logged-in account",
-    "Logged-in account",
-
-    # ---------------------------------------------
-    # ET Prime
-    # ---------------------------------------------
-
-    "Synopsis",
-    "ETPrime",
-    "ET Prime",
-    "Prime",
-    "Prime Member",
-    "Prime Membership",
-    "Prime credentials",
-    "Member benefits",
-    "Enjoy member benefits",
 
     # ---------------------------------------------
     # Social
     # ---------------------------------------------
-
     "Follow Us",
     "Join our WhatsApp",
     "WhatsApp Channel",
     "Telegram Channel",
-    "Download App"
-
+    "Download App",
 ]
 
 # =====================================================
@@ -116,91 +87,74 @@ SOURCE_REMOVE_PHRASES = {
     "Economic Times": [
 
         "Reliable and Trusted News Source",
-
         "Add Now!",
-
         "Economic Times WhatsApp Channel",
-
         "You can now subscribe",
 
         "Synopsis",
 
+        # ET Prime
+        "ET Prime",
         "ETPrime",
-
-        "Prime",
-
         "Prime Member",
-
+        "Prime Membership",
         "Prime credentials",
-
+        "Premium Story",
         "Member benefits",
-
         "Enjoy member benefits",
 
+        # Login
+        "Already a member",
         "Current logged-in account",
-
         "Logged-in account",
 
-        "Already a member",
-
+        # Subscription
         "Unlock this story",
-
         "Unlock premium content",
 
+        # Navigation
         "Continue Reading",
-
-        "Read Full Story"
-
+        "Read Full Story",
     ],
 
     "ET": [
 
         "Reliable and Trusted News Source",
-
         "Add Now!",
-
         "Economic Times WhatsApp Channel",
-
         "You can now subscribe",
 
         "Synopsis",
 
+        "ET Prime",
         "ETPrime",
-
-        "Prime",
-
         "Prime Member",
-
+        "Prime Membership",
         "Prime credentials",
-
+        "Premium Story",
         "Member benefits",
-
         "Enjoy member benefits",
 
+        "Already a member",
         "Current logged-in account",
-
         "Logged-in account",
 
-        "Already a member",
-
         "Unlock this story",
+        "Unlock premium content",
 
-        "Unlock premium content"
-
+        "Continue Reading",
+        "Read Full Story",
     ],
 
-    "The Hindu": [
+    "The Hindu": [],
 
-    ],
+    "Indian Express": [],
 
-    "Indian Express": [
+    "Hindustan Times": [],
 
-    ],
+    "BBC": [],
 
-    "Hindustan Times": [
-
-    ]
-
+    "Reuters": [],
 }
 
 # =====================================================
@@ -212,67 +166,43 @@ REGEX_PATTERNS = [
     # -----------------------------------------
     # URLs
     # -----------------------------------------
-
     r"https?://\S+",
-
     r"www\.\S+",
 
     # -----------------------------------------
     # Social Promotion
     # -----------------------------------------
-
-    r"You can now subscribe.*",
-
+    r"You can now subscribe[^\n]*",
     r"Join our WhatsApp.*",
-
     r"Follow us on.*",
-
     r"Follow our.*",
-
     r"Subscribe to our.*",
-
     r"Download our app.*",
-
     r"Click here.*",
-
     r"Share this article.*",
 
     # -----------------------------------------
     # Newsletter
     # -----------------------------------------
-
     r"Sign up for.*newsletter.*",
 
     # -----------------------------------------
     # ET Prime
     # -----------------------------------------
-
     r"ETPrime.*",
-
     r"Prime credentials.*",
-
     r"Member benefits.*",
-
     r"Enjoy member benefits.*",
-
     r"Current logged-in account.*",
-
     r"Logged-in account.*",
-
     r"Already a member.*",
-
     r"Unlock.*",
-
     r"Read Full Story.*",
-
     r"Continue Reading.*",
 
     # -----------------------------------------
     # Copyright
     # -----------------------------------------
-
     r"©.*",
-
-    r"All rights reserved.*"
-
+    r"All rights reserved.*",
 ]
