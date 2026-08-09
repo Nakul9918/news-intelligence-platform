@@ -3,7 +3,9 @@ Unified Agentic RAG Engine
 """
 
 from typing import Dict, List, Any
+import re
 from pymongo import MongoClient
+
 
 from ai.query_router import analyze_query
 from ai.context_builder import build_rag_context
@@ -145,16 +147,36 @@ def run_agentic_rag(question: str) -> Dict[str, Any]:
         else:
             raise Exception("ES ping failed")
     except Exception:
-        # Fallback to MongoDB query if ES is unreachable
-        mongo_query = {}
-        if filters["category"]:
-            mongo_query["category.label"] = filters["category"]
-        if filters["sentiment"]:
-            mongo_query["sentiment.label"] = filters["sentiment"]
-        
+        # Targeted MongoDB fallback search using word-boundary matching
+        q_raw = question.strip() if question else ""
+        q_words = [re.escape(w) for w in q_raw.split() if len(w) > 1]
+        patterns = [rf"\b{w}\b" if len(w) <= 5 else w for w in q_words]
+        combined_pattern = "|".join(patterns) if patterns else (re.escape(q_raw) if q_raw else "news")
+
+        mongo_query = {
+            "$and": [
+                {"$or": [
+                    {"title": {"$regex": combined_pattern, "$options": "i"}},
+                    {"clean_content": {"$regex": combined_pattern, "$options": "i"}},
+                    {"keywords": {"$regex": combined_pattern, "$options": "i"}}
+                ]},
+                {"title": {"$not": {"$regex": r"^(Quote of the Day|Horoscope|Proverb of the Day|Numerology)", "$options": "i"}}}
+            ]
+        }
+        if filters.get("category"):
+            mongo_query["$and"].append({"category.label": filters["category"]})
+
         cursor = coll.find(mongo_query).sort("created_at", -1).limit(8)
         retrieved_articles = list(cursor)
+        
+        # Fallback to recent top news articles if specific topic matches are empty
+        if not retrieved_articles:
+            retrieved_articles = list(coll.find({
+                "title": {"$not": {"$regex": r"^(Quote of the Day|Horoscope|Proverb of the Day|Numerology)", "$options": "i"}}
+            }).sort("created_at", -1).limit(8))
+
         retrieval_method = "mongodb_fallback"
+
 
     m_client.close()
 

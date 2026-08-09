@@ -114,15 +114,20 @@ def json_serializer(value):
     ).encode("utf-8")
 
 def get_kafka_producer():
-    """Create durable Kafka Producer."""
-    return KafkaProducer(
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        value_serializer=json_serializer,
-        acks="all",
-        retries=5,
-        request_timeout_ms=30000,
-        delivery_timeout_ms=120000
-    )
+    """Create durable Kafka Producer with fallback handling."""
+    try:
+        return KafkaProducer(
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            value_serializer=json_serializer,
+            acks="all",
+            retries=2,
+            request_timeout_ms=3000,
+            delivery_timeout_ms=5000
+        )
+    except Exception as e:
+        logger.warning(f"Kafka Producer unavailable ({e}). Falling back to direct MongoDB persistence.")
+        return None
+
 
 def init_durable_cache(db):
     """Load existing published article_ids into memory cache for speed."""
@@ -259,36 +264,47 @@ def run_ingestion_cycle(producer, db, published_cache):
                         }
                     }
 
-                    # Publish to Kafka
-                    try:
-                        future = producer.send(
-                            KAFKA_TOPIC,
-                            key=article_id.encode("utf-8"),
-                            value=article
-                        )
-                        # Wait briefly for ack
-                        future.get(timeout=10)
+                    # Publish to Kafka or Direct MongoDB Persistence
+                    sent_ok = False
+                    if producer:
+                        try:
+                            future = producer.send(
+                                KAFKA_TOPIC,
+                                key=article_id.encode("utf-8"),
+                                value=article
+                            )
+                            future.get(timeout=5)
+                            sent_ok = True
+                        except Exception as kerr:
+                            logger.warning(f"Kafka send failed for {link}: {kerr}. Using direct DB fallback.")
 
-                        # Record in durable MongoDB state
-                        state_coll.update_one(
-                            {"article_id": article_id},
-                            {
-                                "$set": {
-                                    "article_id": article_id,
-                                    "link": link,
-                                    "source": source_name,
-                                    "published_at": now_iso
-                                }
-                            },
-                            upsert=True
-                        )
+                    if not sent_ok:
+                        # Direct Mongo Persistence Fallback
+                        realtime_coll = db[REALTIME_COLLECTION_NAME]
+                        article["processing"]["status"] = "PENDING"
+                        article["processing"]["stage"] = "ingested_direct"
+                        try:
+                            realtime_coll.update_one({"$or": [{"article_id": article_id}, {"link": link}]}, {"$set": article}, upsert=True)
+                        except Exception as m_err:
+                            logger.warning(f"MongoDB upsert notice for {link[:40]}: {m_err}")
 
-                        published_cache.add(article_id)
-                        src_new += 1
 
-                    except Exception as kerr:
-                        logger.error(f"Kafka send error for {link}: {kerr}")
-                        src_failed += 1
+                    # Record in durable state
+                    state_coll.update_one(
+                        {"article_id": article_id},
+                        {
+                            "$set": {
+                                "article_id": article_id,
+                                "link": link,
+                                "source": source_name,
+                                "published_at": now_iso
+                            }
+                        },
+                        upsert=True
+                    )
+                    published_cache.add(article_id)
+                    src_new += 1
+
 
             except Exception as fe:
                 logger.error(f"Error fetching feed {url}: {fe}")
@@ -306,7 +322,8 @@ def run_ingestion_cycle(producer, db, published_cache):
         stats["kafka_sent"] += src_new
         stats["failures"] += src_failed
 
-    producer.flush()
+    if producer:
+        producer.flush()
 
     logger.info("=" * 70)
     logger.info("INGESTION CYCLE SUMMARY")
@@ -330,7 +347,7 @@ def run_ingestion_cycle(producer, db, published_cache):
 # Daemon Entry Point
 # ==========================================================
 
-def start_ingestion_daemon():
+def start_ingestion_daemon(once=False):
     global running
 
     logger.info("Starting Automatic News Ingestion Daemon...")
@@ -345,6 +362,8 @@ def start_ingestion_daemon():
     try:
         while running:
             run_ingestion_cycle(producer, db, published_cache)
+            if once:
+                break
             logger.info(f"Sleeping for {INGESTION_INTERVAL_SECONDS} seconds...")
             
             # Sleep in 1-second chunks for quick signal responsiveness
@@ -359,10 +378,17 @@ def start_ingestion_daemon():
         logger.exception(f"Unhandled error in ingestion daemon: {e}")
     finally:
         logger.info("Flushing Kafka Producer...")
-        producer.flush()
-        producer.close()
+        if producer:
+            producer.flush()
+            producer.close()
         client.close()
         logger.info("Ingestion Service Shutdown Complete.")
 
+
 if __name__ == "__main__":
-    start_ingestion_daemon()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--once", action="store_true", help="Run single cycle and exit")
+    args = parser.parse_args()
+    start_ingestion_daemon(once=args.once)
+

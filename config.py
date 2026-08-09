@@ -15,6 +15,9 @@ DATABASE_NAME = "news_db"
 # =====================================================
 
 REALTIME_COLLECTION_NAME = "realtime_articles"
+HISTORICAL_COLLECTION_NAME = "historical_articles"
+QUARANTINE_COLLECTION_NAME = "quarantine_articles"
+INGESTION_STATE_COLLECTION_NAME = "ingestion_state"
 
 # =====================================================
 # Kafka Configuration
@@ -28,7 +31,8 @@ KAFKA_CONSUMER_GROUP = "news-consumer-group-v2"
 
 AUTO_OFFSET_RESET = "earliest"
 
-ENABLE_AUTO_COMMIT = True
+# Enforce manual offset commits to guarantee no data loss
+ENABLE_AUTO_COMMIT = False
 
 
 # =====================================================
@@ -40,6 +44,7 @@ RSS_CHECK_INTERVAL = 3600
 
 # Retry if producer fails
 PRODUCER_RETRY_DELAY = 60
+
 
 
 # =====================================================
@@ -214,25 +219,29 @@ MAX_CHUNK_LENGTH = 450
 MAX_CLASSIFICATION_CHUNKS = 10
 
 CATEGORIES = [
-
     "Politics",
-
     "Business",
-
     "Technology",
-
     "Sports",
-
     "Health",
-
     "Entertainment",
-
     "Science",
-
     "Education",
-
     "World",
-
     "Crime"
-
 ]
+
+# =====================================================
+# Data Quality & Thresholds
+# =====================================================
+MIN_TITLE_LENGTH = 8
+MIN_CONTENT_LENGTH = 150
+MIN_CLEAN_CONTENT_LENGTH = 100
+QUALITY_SCORE_THRESHOLD = 50.0
+
+# =====================================================
+# Service Network Ports & Hosts
+# =====================================================
+API_HOST = "127.0.0.1"
+API_PORT = 8000
+DASHBOARD_PORT = 8501

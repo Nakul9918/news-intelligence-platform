@@ -83,13 +83,21 @@ def get_es_client(host: str = ELASTICSEARCH_HOST) -> Elasticsearch:
 
 def create_index_if_not_exists(es: Optional[Elasticsearch] = None, index_name: str = ELASTICSEARCH_INDEX) -> bool:
     """Verify or create Elasticsearch index with mapping."""
-    if es is None:
-        es = get_es_client()
-    if not es.indices.exists(index=index_name):
-        es.indices.create(index=index_name, body=INDEX_MAPPING)
-        logger.info(f"Created index '{index_name}' with dense_vector (dims={EMBEDDING_DIMENSION}).")
+    try:
+        if es is None:
+            es = get_es_client()
+        if not es.ping():
+            logger.warning(f"Elasticsearch cluster at {ELASTICSEARCH_HOST} is offline. Mongo fallback active.")
+            return False
+        if not es.indices.exists(index=index_name):
+            es.indices.create(index=index_name, body=INDEX_MAPPING)
+            logger.info(f"Created index '{index_name}' with dense_vector (dims={EMBEDDING_DIMENSION}).")
+            return True
         return True
-    return False
+    except Exception as e:
+        logger.warning(f"Elasticsearch index creation skipped ({e}). Using Mongo fallback.")
+        return False
+
 
 from datetime import datetime
 from dateutil import parser as date_parser
@@ -172,49 +180,64 @@ def prepare_document_for_es(article: Dict[str, Any]) -> Dict[str, Any]:
 
 def index_article(article: Dict[str, Any], es: Optional[Elasticsearch] = None, index_name: str = ELASTICSEARCH_INDEX) -> bool:
     """Index a single enriched article into ES using article_id as _id."""
-    if es is None:
-        es = get_es_client()
-    create_index_if_not_exists(es, index_name)
+    try:
+        if es is None:
+            es = get_es_client()
+        if not create_index_if_not_exists(es, index_name):
+            return False
 
-    article_id = article.get("article_id") or str(article.get("_id"))
-    if not article_id:
-        logger.error("Cannot index document missing article_id")
+        article_id = article.get("article_id") or str(article.get("_id"))
+        if not article_id:
+            logger.error("Cannot index document missing article_id")
+            return False
+
+        doc = prepare_document_for_es(article)
+        res = es.index(index=index_name, id=article_id, document=doc)
+        return res.get("result") in ["created", "updated"]
+    except Exception as e:
+        logger.warning(f"Elasticsearch article indexing skipped (Host offline or unreachable: {e})")
         return False
-
-    doc = prepare_document_for_es(article)
-    res = es.index(index=index_name, id=article_id, document=doc)
-    return res.get("result") in ["created", "updated"]
 
 def index_articles_bulk(articles: List[Dict[str, Any]], es: Optional[Elasticsearch] = None, index_name: str = ELASTICSEARCH_INDEX) -> Dict[str, int]:
     """Bulk index articles into Elasticsearch idempotently."""
-    if es is None:
-        es = get_es_client()
-    create_index_if_not_exists(es, index_name)
+    try:
+        if es is None:
+            es = get_es_client()
+        if not create_index_if_not_exists(es, index_name):
+            return {"indexed": 0, "failed": len(articles)}
 
-    actions = []
-    for art in articles:
-        article_id = art.get("article_id") or str(art.get("_id"))
-        if not article_id:
-            continue
-        doc = prepare_document_for_es(art)
-        actions.append({
-            "_op_type": "index",
-            "_index": index_name,
-            "_id": article_id,
-            "_source": doc
-        })
+        actions = []
+        for art in articles:
+            article_id = art.get("article_id") or str(art.get("_id"))
+            if not article_id:
+                continue
+            doc = prepare_document_for_es(art)
+            actions.append({
+                "_op_type": "index",
+                "_index": index_name,
+                "_id": article_id,
+                "_source": doc
+            })
 
-    if not actions:
-        return {"indexed": 0, "failed": 0}
+        if not actions:
+            return {"indexed": 0, "failed": 0}
 
-    success, failed = helpers.bulk(es, actions, stats_only=False, raise_on_error=False)
-    failed_count = len(failed) if isinstance(failed, list) else 0
-    return {"indexed": success, "failed": failed_count}
+        success, failed = helpers.bulk(es, actions, stats_only=False, raise_on_error=False)
+        failed_count = len(failed) if isinstance(failed, list) else 0
+        return {"indexed": success, "failed": failed_count}
+    except Exception as e:
+        logger.warning(f"Elasticsearch bulk indexing skipped (Host offline or unreachable: {e})")
+        return {"indexed": 0, "failed": len(articles)}
 
 def search_articles(query: str, size: int = 10, category: Optional[str] = None, es: Optional[Elasticsearch] = None, index_name: str = ELASTICSEARCH_INDEX) -> List[Dict[str, Any]]:
     """BM25 full-text keyword search across title, content, summary, and keywords."""
-    if es is None:
-        es = get_es_client()
+    try:
+        if es is None:
+            es = get_es_client()
+        if not es.ping():
+            return []
+    except Exception:
+        return []
 
     must_clause = [
         {

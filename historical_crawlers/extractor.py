@@ -12,11 +12,18 @@ Extraction Pipeline
 Version 4
 """
 
+import logging
 from newspaper import Article
 import trafilatura
 import requests
 from bs4 import BeautifulSoup
 import re
+
+# Suppress third-party extraction loggers
+logging.getLogger("newspaper").setLevel(logging.ERROR)
+logging.getLogger("trafilatura").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
+
 
 
 # =====================================================
@@ -571,13 +578,7 @@ def extract_with_bs4(url):
 # =====================================================
 
 def extract_article(url):
-
-    print("\n" + "=" * 70)
-    print("Starting Article Extraction")
-    print("=" * 70)
-
     if not is_valid_url(url):
-        print("Invalid URL")
         return None
 
     methods = [
@@ -587,13 +588,8 @@ def extract_article(url):
     ]
 
     for method in methods:
-
-        print(f"\nTrying {method.__name__}...")
-
         result = method(url)
-
         if result is None:
-            print("Trying next extraction method...")
             continue
 
         title = clean_text(result.get("title"))
@@ -602,22 +598,11 @@ def extract_article(url):
 
         # Validate extracted content
         if not is_valid_content(content):
-            print("Invalid extracted content.")
             continue
 
         # Validate author
         if not is_valid_author(authors):
-            print("Invalid author information.")
             continue
-
-        print("\n" + "=" * 70)
-        print("Article Extracted Successfully")
-        print("=" * 70)
-
-        print("Method :", result["method"])
-        print("Title  :", title)
-        print("Author :", ", ".join(authors))
-        print("Length :", len(content), "characters")
 
         return {
             "title": title,
@@ -626,11 +611,8 @@ def extract_article(url):
             "method": result["method"]
         }
 
-    print("\n" + "=" * 70)
-    print("All Extraction Methods Failed")
-    print("=" * 70)
-
     return None
+
 
 
 # =====================================================

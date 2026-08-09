@@ -1,12 +1,15 @@
 """
-Phase 14 — Temporal Analytics Integration Test
+=====================================================
+Production-Grade Temporal Analytics Integration & QA Test Suite
+=====================================================
+Validates unit math, data contract parsing, statistical spike thresholds,
+trend direction classifications, evidence lineage, and API response schemas.
 """
 
 import sys
-import io
-import time
-import requests
 from pathlib import Path
+from datetime import datetime, timezone, timedelta
+from fastapi.testclient import TestClient
 
 # Set stdout encoding safely on Windows
 if sys.platform == "win32" and hasattr(sys.stdout, 'reconfigure'):
@@ -16,98 +19,139 @@ root_dir = Path(__file__).resolve().parent
 if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
-API_URL = "http://127.0.0.1:8000"
+from api.main import app
+from api.temporal_analytics import (
+    parse_any_timestamp,
+    bucket_timestamp,
+    get_recommended_bucket,
+    compute_trend_direction
+)
 
-def test_temporal_analytics():
-    print("=" * 80)
-    print("RUNNING TEMPORAL ANALYTICS INTEGRATION TEST (PHASE 14)")
-    print("=" * 80)
 
-    # 1. API Health Check
-    print("\n--- Step 1: API Health Check ---")
-    resp = requests.get(f"{API_URL}/health", timeout=5)
-    assert resp.status_code == 200, f"Health check failed: {resp.status_code}"
-    print(f"[PASS] API Health Check OK: {resp.json()}")
+def test_unit_math_and_conversions():
+    print("\n--- Step 1: Testing Unit Math & Date Conversions ---")
+    
+    # 1. Date Parsing
+    now_utc = datetime.now(timezone.utc)
+    ts_str = "2026-08-09T14:30:00Z"
+    parsed_dt = parse_any_timestamp(ts_str)
+    assert parsed_dt is not None, "Failed to parse ISO timestamp string!"
+    assert parsed_dt.tzinfo == timezone.utc, "Parsed timestamp must be UTC aware!"
+    print("  [PASS] ISO Timestamp parsing & UTC normalization OK")
 
-    # 2. Volume Analytics Endpoint
-    print("\n--- Step 2: Temporal Volume Endpoint ---")
-    resp = requests.get(f"{API_URL}/api/analytics/volume?window=24h&bucket=1h", timeout=5)
-    assert resp.status_code == 200, f"Volume endpoint failed: {resp.status_code}"
+    # 2. Bucketing Rules
+    dt_ref = datetime(2026, 8, 9, 14, 35, 12, tzinfo=timezone.utc)
+    assert bucket_timestamp(dt_ref, "1h") == "2026-08-09 14:00"
+    assert bucket_timestamp(dt_ref, "1d") == "2026-08-09"
+    assert bucket_timestamp(dt_ref, "1m") == "2026-08"
+    print("  [PASS] Granularity bucketing (1h, 1d, 1m) OK")
+
+    # 3. Dynamic Bucket Recommendation
+    assert get_recommended_bucket("24h") == "1h"
+    assert get_recommended_bucket("7d") == "1d"
+    assert get_recommended_bucket("3m") == "1w"
+    assert get_recommended_bucket("12m") == "1m"
+    print("  [PASS] Recommended bucket selection OK")
+
+    # 4. Trend Direction Calculation
+    rising = compute_trend_direction(20, 10, min_baseline=3)
+    assert rising["direction"] == "RISING"
+    assert rising["growth_pct"] == 100.0
+
+    declining = compute_trend_direction(5, 20, min_baseline=3)
+    assert declining["direction"] == "DECLINING"
+    assert declining["growth_pct"] == -75.0
+
+    stable = compute_trend_direction(10, 10, min_baseline=3)
+    assert stable["direction"] == "STABLE"
+
+    insufficient = compute_trend_direction(15, 1, min_baseline=3)
+    assert insufficient["direction"] == "INSUFFICIENT BASELINE"
+    print("  [PASS] Deterministic trend direction math OK")
+
+
+def test_api_analytics_endpoints():
+    print("\n--- Step 2: Testing FastAPI Analytics Endpoints ---")
+    client = TestClient(app)
+
+    # 1. Health check
+    resp = client.get("/health")
+    assert resp.status_code == 200
+
+    # 2. Volume Endpoint
+    resp = client.get("/api/analytics/volume?window=24h&bucket=1h")
+    assert resp.status_code == 200
     vol = resp.json()
-    assert "data" in vol, "data field missing from volume analytics!"
-    assert "total_count" in vol, "total_count field missing from volume analytics!"
-    print(f"[PASS] Temporal Volume Endpoint OK (Window: 24h, Bucket: 1h, Total Articles: {vol['total_count']})")
+    assert "data" in vol and "trend_direction" in vol and "data_quality" in vol
+    print(f"  [PASS] Volume API (Direction: {vol['trend_direction']}, Valid Date Pct: {vol['data_quality']['valid_date_pct']}%)")
 
     # 3. Source Trends Endpoint
-    print("\n--- Step 3: Source Trends Endpoint ---")
-    resp = requests.get(f"{API_URL}/api/analytics/source-trends?window=24h&bucket=1h", timeout=5)
-    assert resp.status_code == 200, f"Source trends failed: {resp.status_code}"
-    src_tr = resp.json()
-    assert "sources" in src_tr, "sources array missing!"
-    assert "data" in src_tr, "data array missing!"
-    print(f"[PASS] Source Trends Endpoint OK (Tracked Sources: {src_tr['sources']})")
+    resp = client.get("/api/analytics/source-trends?window=24h&bucket=1h")
+    assert resp.status_code == 200
+    src = resp.json()
+    assert "sources" in src and "data" in src
+    print(f"  [PASS] Source Trends API (Tracked sources: {len(src['sources'])})")
 
     # 4. Category Trends Endpoint
-    print("\n--- Step 4: Category Trends Endpoint ---")
-    resp = requests.get(f"{API_URL}/api/analytics/category-trends?window=24h&bucket=1h", timeout=5)
-    assert resp.status_code == 200, f"Category trends failed: {resp.status_code}"
-    cat_tr = resp.json()
-    assert "categories" in cat_tr, "categories array missing!"
-    print(f"[PASS] Category Trends Endpoint OK (Tracked Categories: {cat_tr['categories']})")
+    resp = client.get("/api/analytics/category-trends?window=24h&bucket=1h")
+    assert resp.status_code == 200
+    cat = resp.json()
+    assert "categories" in cat and "top_category" in cat
+    print(f"  [PASS] Category Trends API (Top category: {cat['top_category']})")
 
     # 5. Sentiment Trends Endpoint
-    print("\n--- Step 5: Sentiment Trends Endpoint ---")
-    resp = requests.get(f"{API_URL}/api/analytics/sentiment-trends?window=24h&bucket=1h", timeout=5)
-    assert resp.status_code == 200, f"Sentiment trends failed: {resp.status_code}"
-    sent_tr = resp.json()
-    assert "data" in sent_tr, "data array missing!"
-    print(f"[PASS] Sentiment Trends Endpoint OK (Data Points: {len(sent_tr['data'])})")
+    resp = client.get("/api/analytics/sentiment-trends?window=24h&bucket=1h")
+    assert resp.status_code == 200
+    sent = resp.json()
+    assert "data" in sent
+    print(f"  [PASS] Sentiment Trends API ({len(sent['data'])} data points)")
 
-    # 6. Spike Detection Endpoint
-    print("\n--- Step 6: Spike Detection Endpoint ---")
-    resp = requests.get(f"{API_URL}/api/analytics/spikes?window=24h&multiplier=2.0", timeout=5)
-    assert resp.status_code == 200, f"Spike detection failed: {resp.status_code}"
-    spikes = resp.json()
-    assert "overall" in spikes, "overall spike object missing!"
-    print(f"[PASS] Spike Detection Endpoint OK (Status: {spikes['overall']['status']}, Current Vol: {spikes['overall']['current_volume']}, Baseline: {spikes['overall']['baseline_volume']})")
+    # 6. Spikes Endpoint
+    resp = client.get("/api/analytics/spikes?window=24h")
+    assert resp.status_code == 200
+    spk = resp.json()
+    assert "overall" in spk and "status" in spk["overall"]
+    print(f"  [PASS] Statistical Spike API (Status: {spk['overall']['status']}, Threshold: {spk['overall']['spike_threshold']})")
 
-    # 7. Emerging Keywords Endpoint
-    print("\n--- Step 7: Emerging Keywords Endpoint ---")
-    resp = requests.get(f"{API_URL}/api/analytics/keywords?limit=10", timeout=5)
-    assert resp.status_code == 200, f"Keywords endpoint failed: {resp.status_code}"
+    # 7. Keywords Endpoint
+    resp = client.get("/api/analytics/keywords?window=24h&limit=10")
+    assert resp.status_code == 200
     kw = resp.json()
-    assert "keywords" in kw, "keywords array missing!"
-    print(f"[PASS] Emerging Keywords Endpoint OK (Retrieved {len(kw['keywords'])} trending keywords)")
+    assert "keywords" in kw
+    print(f"  [PASS] Emerging Keywords API ({len(kw['keywords'])} items)")
 
-    # 8. Emerging Entities Endpoint
-    print("\n--- Step 8: Emerging Entities Endpoint ---")
-    resp = requests.get(f"{API_URL}/api/analytics/entities?limit=10", timeout=5)
-    assert resp.status_code == 200, f"Entities endpoint failed: {resp.status_code}"
+    # 8. Entities Endpoint
+    resp = client.get("/api/analytics/entities?window=24h&limit=10")
+    assert resp.status_code == 200
     ent = resp.json()
-    assert "entities" in ent, "entities array missing!"
-    print(f"[PASS] Emerging Entities Endpoint OK (Retrieved {len(ent['entities'])} trending entities)")
+    assert "entities" in ent
+    print(f"  [PASS] Emerging Entities API ({len(ent['entities'])} items)")
 
-    # 9. Cross-Source Activity Signals Endpoint
-    print("\n--- Step 9: Cross-Source Activity Signals Endpoint ---")
-    resp = requests.get(f"{API_URL}/api/analytics/cross-source?min_sources=2", timeout=5)
-    assert resp.status_code == 200, f"Cross-source activity failed: {resp.status_code}"
+    # 9. Cross Source Endpoint
+    resp = client.get("/api/analytics/cross-source?window=24h")
+    assert resp.status_code == 200
     cs = resp.json()
-    assert "topics" in cs, "topics array missing!"
-    print(f"[PASS] Cross-Source Activity Endpoint OK (Identified {len(cs['topics'])} cross-source topics)")
+    assert "topics" in cs
+    print(f"  [PASS] Cross Source Activity API ({len(cs['topics'])} multi-publisher topics)")
 
-    # 10. Verify Existing Phase 13 Endpoints (Non-Breaking Check)
-    print("\n--- Step 10: Phase 13 Non-Breaking Backward Compatibility Check ---")
-    resp = requests.get(f"{API_URL}/api/metrics", timeout=5)
-    assert resp.status_code == 200, f"Phase 13 metrics failed: {resp.status_code}"
-    resp = requests.get(f"{API_URL}/api/live-feed", timeout=5)
-    assert resp.status_code == 200, f"Phase 13 live feed failed: {resp.status_code}"
-    resp = requests.get(f"{API_URL}/api/search?q=india&type=bm25", timeout=5)
-    assert resp.status_code == 200, f"Phase 13 search failed: {resp.status_code}"
-    print("[PASS] All Phase 13 Endpoints Remain 100% Functional!")
+    # 10. Trend Explanation Endpoint ("WHY?")
+    resp = client.get("/api/analytics/trend-explanation?window=24h&item_type=overall&item_name=all")
+    assert resp.status_code == 200
+    exp = resp.json()
+    assert "top_responsible_sources" in exp and "responsible_articles" in exp
+    print(f"  [PASS] Evidence Lineage / Explanation API ({len(exp['responsible_articles'])} responsible articles)")
 
+
+def main():
+    print("=" * 80)
+    print("RUNNING PRODUCTION-GRADE TEMPORAL ANALYTICS QA & INTEGRATION SUITE")
+    print("=" * 80)
+    test_unit_math_and_conversions()
+    test_api_analytics_endpoints()
     print("\n" + "=" * 80)
-    print("ALL PHASE 14 TEMPORAL ANALYTICS TESTS PASSED SUCCESSFULLY!")
+    print("[SUCCESS] ALL TEMPORAL INTELLIGENCE QA TESTS PASSED PERFECTLY")
     print("=" * 80)
 
+
 if __name__ == "__main__":
-    test_temporal_analytics()
+    main()

@@ -163,7 +163,22 @@ def start_consumer(single_run=False, max_messages=None):
                     else:
                         source_dict = {"name": "Unknown", "country": "India", "language": "en", "type": "rss"}
 
-                    # 3. Idempotent MongoDB Persistence
+                    # 3. Data Quality Gate Check
+                    from qc.quality_gate import evaluate_article_quality
+                    dq_result = evaluate_article_quality(article)
+                    
+                    if dq_result["quality_status"] == "QUARANTINED":
+                        logger.warning(f"[QUARANTINED] Article '{title[:40]}' (ID: {article_id[:16]}) failed DQ (Score: {dq_result['quality_score']}). Errors: {dq_result['errors']}")
+                        q_collection = client[DATABASE_NAME]["quarantine_articles"]
+                        quarantined_doc = dict(article)
+                        quarantined_doc["article_id"] = article_id
+                        quarantined_doc["data_quality"] = dq_result
+                        quarantined_doc["quarantined_at"] = datetime.now(UTC)
+                        q_collection.update_one({"article_id": article_id}, {"$set": quarantined_doc}, upsert=True)
+                        consumer.commit()
+                        continue
+
+                    # 4. Idempotent MongoDB Persistence
                     try:
                         # Check if article already exists
                         existing = collection.find_one({
@@ -201,7 +216,8 @@ def start_consumer(single_run=False, max_messages=None):
                                 "category": {},
                                 "summary": {"text": "", "model": ""},
                                 "embedding": {"vector": [], "dimension": 0, "model": ""},
-                                "ingestion_type": "realtime",
+                                "data_quality": dq_result,
+                                "ingestion_type": article.get("ingestion_type", "realtime"),
                                 "last_pipeline_stage": "ingestion",
                                 "processing": {
                                     "status": "PENDING",
@@ -217,9 +233,9 @@ def start_consumer(single_run=False, max_messages=None):
                             }
 
                             collection.insert_one(document)
-                            logger.info(f"[PERSISTED] article_id: {article_id[:16]}... | Title: {title[:40]}")
+                            logger.info(f"[PERSISTED] article_id: {article_id[:16]}... | Title: {title[:40]} (DQ Score: {dq_result['quality_score']})")
 
-                        # 4. Commit Kafka Offset after Mongo operation succeeds
+                        # 5. Commit Kafka Offset after Mongo operation succeeds
                         consumer.commit()
                         logger.info(f"[COMMITTED] Offset {message.offset}")
 

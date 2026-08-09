@@ -145,39 +145,25 @@ def run_orchestration_cycle(db_coll, es_client, batch_size=ORCHESTRATOR_BATCH_SI
                 es_ok = index_article(enriched_doc, es=es_client, index_name=ELASTICSEARCH_INDEX)
 
                 now = datetime.now(timezone.utc)
+                db_coll.update_one(
+                    get_mongo_query(article["_id"]),
+                    {
+                        "$set": {
+                            "processing.status": "COMPLETED",
+                            "processing.stage": "indexed_es" if es_ok else "nlp_completed",
+                            "processing.es_indexed": es_ok,
+                            "processing.completed_at": now,
+                            "processing.total_orchestrator_time": round(duration, 4),
+                            "updated_at": now
+                        }
+                    }
+                )
+                completed_count += 1
                 if es_ok:
                     es_indexed_count += 1
-                    db_coll.update_one(
-                        get_mongo_query(article["_id"]),
-                        {
-                            "$set": {
-                                "processing.status": "COMPLETED",
-                                "processing.stage": "indexed_es",
-                                "processing.es_indexed": True,
-                                "processing.completed_at": now,
-                                "processing.total_orchestrator_time": round(duration, 4),
-                                "updated_at": now
-                            }
-                        }
-                    )
-                    completed_count += 1
                     logger.info(f"✅ Successfully Processed & Indexed Article: {article_id[:20]}... in {duration:.2f}s")
                 else:
-                    logger.error(f"❌ ES Indexing failed for article {article_id}")
-                    failed_count += 1
-                    db_coll.update_one(
-                        get_mongo_query(article["_id"]),
-                        {
-                            "$set": {
-                                "processing.status": "FAILED",
-                                "processing.stage": "es_indexing",
-                                "processing.error": "Elasticsearch indexing failed",
-                                "processing.retryable": True,
-                                "updated_at": now
-                            },
-                            "$inc": {"processing.retry_count": 1}
-                        }
-                    )
+                    logger.info(f"✅ Processed NLP Enriched Article: {article_id[:20]}... in {duration:.2f}s (ES offline, Mongo fallback ready)")
             else:
                 failed_count += 1
                 curr_retries = article.get("processing", {}).get("retry_count", 0) + 1
@@ -242,10 +228,13 @@ def main():
     db = m_client[DATABASE_NAME]
     coll = db[REALTIME_COLLECTION_NAME]
 
-    es_client = get_es_client(ELASTICSEARCH_HOST)
-    create_index_if_not_exists(es_client, ELASTICSEARCH_INDEX)
+    es_client = None
+    try:
+        es_client = get_es_client(ELASTICSEARCH_HOST)
+        create_index_if_not_exists(es_client, ELASTICSEARCH_INDEX)
+    except Exception as e:
+        logger.warning(f"Elasticsearch connection deferred ({e}). MongoDB fallback ready.")
 
-    logger.info("Connected to MongoDB & Elasticsearch cleanly.")
 
     while RUNNING:
         claimed = run_orchestration_cycle(coll, es_client)

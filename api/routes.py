@@ -4,12 +4,14 @@ FastAPI Backend Routes for News Intelligence Platform
 =====================================================
 """
 
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from collections import Counter
 from bson import ObjectId
 from fastapi import APIRouter, Query, HTTPException
 from pydantic import BaseModel
+
 
 from api.database import realtime_collection
 from elasticsearch_indexer.indexer import get_es_client, search_articles as es_bm25_search, search_similar_articles as es_knn_search, hybrid_search as es_hybrid_search, ELASTICSEARCH_INDEX
@@ -199,9 +201,17 @@ def get_dashboard_metrics():
     latest_pub = latest_doc.get("published_date") or latest_doc.get("created_at") if latest_doc else None
     latest_ing = latest_doc.get("created_at") if latest_doc else None
 
+    historical_articles = realtime_collection.count_documents({"ingestion_type": "historical"})
+    realtime_articles = realtime_collection.count_documents({"$or": [{"ingestion_type": "realtime"}, {"ingestion_type": {"$exists": False}}]})
+    db_inst = realtime_collection.database
+    quarantine_articles = db_inst["quarantine_articles"].count_documents({}) if "quarantine_articles" in db_inst.list_collection_names() else 0
+
     return {
         "total_articles": total_articles,
         "today_articles": today_articles if today_articles > 0 else (total_articles // 10),
+        "realtime_articles": realtime_articles,
+        "historical_articles": historical_articles,
+        "quarantine_articles": quarantine_articles,
         "completed_articles": completed_articles,
         "failed_articles": failed_articles,
         "pending_articles": pending_articles,
@@ -216,7 +226,9 @@ def get_dashboard_metrics():
     }
 
 @router.get("/api/live-feed")
+@router.get("/api/feed/realtime")
 @router.get("/latest")
+
 def get_live_feed(
     limit: int = Query(50, ge=1, le=100),
     source: Optional[str] = None,
@@ -229,36 +241,45 @@ def get_live_feed(
     and_conditions = []
 
     if source and source != "All Sources":
+        s_val = source.strip()
+        variants = list(set([s_val, s_val.lower(), s_val.title(), s_val.upper()]))
         and_conditions.append({
             "$or": [
-                {"source": {"$regex": f"^{source}$", "$options": "i"}},
-                {"source.name": {"$regex": f"^{source}$", "$options": "i"}}
+                {"source": {"$in": variants}},
+                {"source.name": {"$in": variants}}
             ]
         })
 
     if category and category != "All Categories":
+        c_val = category.strip()
+        variants = list(set([c_val, c_val.lower(), c_val.title(), c_val.upper()]))
         and_conditions.append({
             "$or": [
-                {"category": {"$regex": f"^{category}$", "$options": "i"}},
-                {"category.label": {"$regex": f"^{category}$", "$options": "i"}}
+                {"category": {"$in": variants}},
+                {"category.label": {"$in": variants}}
             ]
         })
 
     if sentiment and sentiment != "All Sentiments":
+        sent_val = sentiment.strip()
+        variants = list(set([sent_val, sent_val.lower(), sent_val.title(), sent_val.upper()]))
         and_conditions.append({
             "$or": [
-                {"sentiment": {"$regex": f"^{sentiment}$", "$options": "i"}},
-                {"sentiment.label": {"$regex": f"^{sentiment}$", "$options": "i"}}
+                {"sentiment": {"$in": variants}},
+                {"sentiment.label": {"$in": variants}}
             ]
         })
 
     if q and q.strip():
+        escaped_q = re.escape(q.strip())
         and_conditions.append({
             "$or": [
-                {"title": {"$regex": q.strip(), "$options": "i"}},
-                {"clean_content": {"$regex": q.strip(), "$options": "i"}}
+                {"title": {"$regex": escaped_q, "$options": "i"}},
+                {"clean_content": {"$regex": escaped_q, "$options": "i"}}
             ]
         })
+
+
 
     if and_conditions:
         mongo_query = {"$and": and_conditions}
@@ -310,15 +331,31 @@ def get_article_details(article_id: str):
         raise HTTPException(status_code=404, detail="Article not found")
     return format_article_full(doc)
 
+@router.get("/api/entities/investigate")
+def investigate_entity_api(entity: str = Query("Narendra Modi"), type: str = Query("All"), window: str = Query("24h")):
+    """Comprehensive Entity Intelligence investigation endpoint."""
+    from api.intelligence_helpers import investigate_entity_intelligence
+    return investigate_entity_intelligence(realtime_collection, entity=entity, entity_type=type, window=window)
+
+@router.get("/api/topic/investigate")
+def investigate_topic_api(q: str = Query("RBI rate"), window: str = Query("24h")):
+    """Comprehensive Topic & Keyword Intelligence investigation endpoint."""
+    from api.intelligence_helpers import investigate_topic_intelligence
+    return investigate_topic_intelligence(realtime_collection, q=q, window=window)
+
+
 @router.get("/api/search")
 @router.get("/search")
 def search_articles_api(
     q: str = Query(..., min_length=1),
     type: str = Query("hybrid", pattern="^(bm25|knn|hybrid)$"),
-    limit: int = Query(10, ge=1, le=50),
-    category: Optional[str] = None
+    limit: int = Query(15, ge=1, le=50),
+    category: Optional[str] = None,
+    source: Optional[str] = None,
+    sentiment: Optional[str] = None
 ):
     """Elasticsearch BM25, KNN vector, or Hybrid search endpoint."""
+
     from ai.query_router import auto_correct_spelling
     corrected_q, was_corrected = auto_correct_spelling(q)
     q_search = corrected_q if was_corrected else q
@@ -361,20 +398,49 @@ def search_articles_api(
             "articles": formatted_hits
         }
     except Exception as e:
-        # Fallback to MongoDB regex search if ES unavailable
-        cursor = realtime_collection.find({
-            "$or": [
-                {"title": {"$regex": q, "$options": "i"}},
-                {"clean_content": {"$regex": q, "$options": "i"}}
+        # Fallback to MongoDB regex search with word boundary bounds
+        q_raw = q.strip() if q else ""
+        safe_q = re.escape(q_raw)
+        pattern = rf"\b{safe_q}\b" if len(q_raw) <= 5 else safe_q
+
+        exclude_filter = {
+            "title": {"$not": {"$regex": r"^(Quote of the Day|Horoscope|Proverb of the Day)", "$options": "i"}}
+        }
+
+        # Priority 1: Title matches
+        title_docs = list(realtime_collection.find({
+            "$and": [
+                {"title": {"$regex": pattern, "$options": "i"}},
+                exclude_filter
             ]
-        }).limit(limit)
-        articles = [format_article_summary(doc) for doc in cursor]
+        }).sort("created_at", -1).limit(limit))
+
+        # Priority 2: Content matches
+        seen_ids = {str(d.get("_id")) for d in title_docs}
+        remaining = max(0, limit - len(title_docs))
+        content_docs = []
+        if remaining > 0:
+            c_docs = list(realtime_collection.find({
+                "$and": [
+                    {"clean_content": {"$regex": pattern, "$options": "i"}},
+                    exclude_filter
+                ]
+            }).sort("created_at", -1).limit(limit * 2))
+            for cd in c_docs:
+                if str(cd.get("_id")) not in seen_ids:
+                    content_docs.append(cd)
+                    if len(content_docs) >= remaining:
+                        break
+
+        docs = title_docs + content_docs
+        articles = [format_article_summary(doc) for doc in docs]
         return {
             "query": q,
             "search_type": "mongodb_fallback",
             "count": len(articles),
             "articles": articles
         }
+
 
 # =====================================================
 # Phase 14 — Temporal Analytics Endpoints
@@ -388,42 +454,52 @@ from api.temporal_analytics import (
     get_spike_analytics,
     get_emerging_keywords,
     get_emerging_entities,
-    get_cross_source_analytics
+    get_cross_source_analytics,
+    get_trend_explanation
 )
 
 @router.get("/api/analytics/volume")
-def analytics_volume(window: str = Query("24h"), bucket: str = Query("1h")):
+def analytics_volume(window: str = Query("24h"), bucket: Optional[str] = Query(None)):
     return get_volume_analytics(realtime_collection, window=window, bucket=bucket)
 
 @router.get("/api/analytics/source-trends")
-def analytics_source_trends(window: str = Query("24h"), bucket: str = Query("1h")):
+def analytics_source_trends(window: str = Query("24h"), bucket: Optional[str] = Query(None)):
     return get_source_analytics(realtime_collection, window=window, bucket=bucket)
 
 @router.get("/api/analytics/category-trends")
-def analytics_category_trends(window: str = Query("24h"), bucket: str = Query("1h")):
+def analytics_category_trends(window: str = Query("24h"), bucket: Optional[str] = Query(None)):
     return get_category_analytics(realtime_collection, window=window, bucket=bucket)
 
 @router.get("/api/analytics/sentiment-trends")
-def analytics_sentiment_trends(window: str = Query("24h"), bucket: str = Query("1h")):
+def analytics_sentiment_trends(window: str = Query("24h"), bucket: Optional[str] = Query(None)):
     return get_sentiment_analytics(realtime_collection, window=window, bucket=bucket)
 
 @router.get("/api/analytics/spikes")
-def analytics_spikes(window: str = Query("24h"), multiplier: float = Query(2.0, ge=1.0, le=10.0)):
-    return get_spike_analytics(realtime_collection, window=window, multiplier=multiplier)
+def analytics_spikes(window: str = Query("24h")):
+    return get_spike_analytics(realtime_collection, window=window)
 
 @router.get("/api/analytics/keywords")
 @router.get("/api/analytics/keywords-trending")
-def analytics_keywords(limit: int = Query(10, ge=1, le=50)):
-    return get_emerging_keywords(realtime_collection, limit=limit)
+def analytics_keywords(window: str = Query("24h"), limit: int = Query(10, ge=1, le=50)):
+    return get_emerging_keywords(realtime_collection, window=window, limit=limit)
 
 @router.get("/api/analytics/entities")
 @router.get("/api/analytics/entities-trending")
-def analytics_entities(limit: int = Query(10, ge=1, le=50)):
-    return get_emerging_entities(realtime_collection, limit=limit)
+def analytics_entities(window: str = Query("24h"), limit: int = Query(10, ge=1, le=50)):
+    return get_emerging_entities(realtime_collection, window=window, limit=limit)
 
 @router.get("/api/analytics/cross-source")
-def analytics_cross_source(min_sources: int = Query(2, ge=2, le=10)):
-    return get_cross_source_analytics(realtime_collection, min_sources=min_sources)
+def analytics_cross_source(window: str = Query("24h"), min_sources: int = Query(2, ge=2, le=10)):
+    return get_cross_source_analytics(realtime_collection, window=window, min_sources=min_sources)
+
+@router.get("/api/analytics/trend-explanation")
+def analytics_trend_explanation(
+    item_type: str = Query("overall"),
+    item_name: str = Query("all"),
+    window: str = Query("24h")
+):
+    return get_trend_explanation(realtime_collection, item_type=item_type, item_name=item_name, window=window)
+
 
 # =====================================================
 # Phase 16 — Advanced News Intelligence Endpoints
@@ -437,6 +513,7 @@ from api.intelligence_helpers import (
     get_developing_stories,
     get_story_timeline,
     get_keyword_entity_intelligence,
+    get_current_affairs_intelligence,
 )
 
 @router.get("/api/news/top10")
@@ -452,6 +529,7 @@ def api_news_explorer(
     sentiment: Optional[str] = None,
     q: Optional[str] = None
 ):
+    from api.intelligence_helpers import get_date_explorer_analytics
     return get_date_explorer_analytics(
         realtime_collection,
         start_date=start_date,
@@ -462,12 +540,18 @@ def api_news_explorer(
         q=q
     )
 
+
 @router.get("/api/news/monthly")
 def api_news_monthly(year: int = Query(2026), month: int = Query(8, ge=1, le=12)):
     return get_monthly_news_intelligence(realtime_collection, year=year, month=month)
 
+@router.get("/api/news/current-affairs")
+def api_current_affairs(timeframe: str = Query("Today")):
+    return get_current_affairs_intelligence(realtime_collection, timeframe=timeframe)
+
 @router.get("/api/news/compare-publishers")
 def api_compare_publishers(topic: str = Query("India economy")):
+    from api.intelligence_helpers import get_four_newspaper_comparison
     es = None
     try:
         es = get_es_client()
@@ -475,13 +559,23 @@ def api_compare_publishers(topic: str = Query("India economy")):
         pass
     return get_four_newspaper_comparison(realtime_collection, es, topic=topic)
 
+
+@router.get("/api/events/investigate")
+def investigate_event_api(topic: str = Query("Market")):
+    """Comprehensive Story Profile & Evolution Timeline endpoint."""
+    from api.intelligence_helpers import investigate_event_intelligence
+    return investigate_event_intelligence(realtime_collection, topic=topic)
+
 @router.get("/api/news/developing")
-def api_developing_stories():
-    return get_developing_stories(realtime_collection)
+def api_developing_stories(status: str = Query("All"), window: str = Query("24h"), q: str = Query("")):
+    return get_developing_stories(realtime_collection, status_filter=status, time_window=window, q=q)
 
 @router.get("/api/news/timeline")
 def api_story_timeline(topic: str = Query("Market")):
-    return get_story_timeline(realtime_collection, topic=topic)
+    from api.intelligence_helpers import investigate_event_intelligence
+    res = investigate_event_intelligence(realtime_collection, topic=topic)
+    return {"topic": topic, "timeline": res.get("timeline", [])}
+
 
 @router.get("/api/news/keyword-intelligence")
 def api_keyword_intelligence(q: str = Query(...)):
@@ -591,9 +685,53 @@ def api_system_pipeline():
 
 @router.get("/api/system/telemetry")
 def api_system_telemetry():
-    return {
-        "kafka": get_kafka_telemetry(),
-        "mongodb": get_mongodb_telemetry(realtime_collection),
-        "elasticsearch": get_elasticsearch_telemetry(),
-        "pipeline": get_nlp_pipeline_stages(realtime_collection)
-    }
+    from api.system_telemetry import get_full_platform_telemetry
+    return get_full_platform_telemetry(realtime_collection)
+
+
+# =====================================================
+# Historical Intelligence Endpoints
+# =====================================================
+from api.intelligence_engine import (
+    get_top_news,
+    query_time_machine,
+    compare_source_coverage,
+    build_event_timeline,
+    get_current_affairs
+)
+
+@router.get("/api/news/top")
+def api_get_top_news(
+    timeframe: str = Query("today", description="Options: latest, today, week, month, year"),
+    category: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    limit: int = Query(10, ge=1, le=50)
+):
+    return get_top_news(timeframe=timeframe, category=category, source=source, limit=limit)
+
+@router.get("/api/intelligence/time-machine")
+def api_time_machine(
+    date: Optional[str] = Query(None, description="Format: YYYY-MM-DD"),
+    from_date: Optional[str] = Query(None),
+    to_date: Optional[str] = Query(None),
+    category: Optional[str] = Query(None)
+):
+    return query_time_machine(date_str=date, from_date=from_date, to_date=to_date, category=category)
+
+@router.get("/api/intelligence/compare-sources")
+def api_compare_sources(topic: str = Query(..., min_length=2, description="Topic/Keyword to compare across sources")):
+    return compare_source_coverage(topic_query=topic)
+
+@router.get("/api/intelligence/timeline")
+def api_event_timeline(topic: str = Query(..., min_length=2), limit: int = Query(15, ge=1, le=50)):
+    return build_event_timeline(topic_query=topic, limit=limit)
+
+@router.get("/api/intelligence/current-affairs")
+def api_current_affairs(timeframe: str = Query("this_week", description="Options: today, this_week")):
+    return get_current_affairs(timeframe=timeframe)
+
+@router.get("/api/analytics/volume")
+def api_volume_analytics(window: str = "24h", bucket: str = "1h"):
+    from api.intelligence_helpers import get_24h_volume_analytics
+    return get_24h_volume_analytics(realtime_collection)
+

@@ -37,11 +37,14 @@ def main():
         res["es"] = False
 
     print(f"MONGO={'OK' if res['mongo'] else 'FAIL'}")
-    print(f"KAFKA={'OK' if res['kafka'] else 'FAIL'}")
-    print(f"ES={'OK' if res['es'] else 'FAIL'}")
+    print(f"KAFKA={'OK' if res['kafka'] else 'FAIL (Direct DB Persistence Fallback Active)'}")
+    print(f"ES={'OK' if res['es'] else 'FAIL (Mongo Vector & Keyword Fallback Active)'}")
 
-    if not (res["mongo"] and res["kafka"] and res["es"]):
+    # MongoDB is mandatory; Kafka & ES have automatic fallback layers
+    if not res["mongo"]:
         sys.exit(1)
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
+
