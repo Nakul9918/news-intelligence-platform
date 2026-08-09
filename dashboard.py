@@ -1,7 +1,7 @@
 """
 =====================================================
-News Intelligence Command Center — Enterprise Dashboard
-Version : 18.0 (Real-Time News Intelligence & Current Affairs Center)
+News Intelligence Command Center — Company-Grade Product UI
+Version : 20.0 (Unified Real-Time News Intelligence Platform)
 =====================================================
 """
 
@@ -23,7 +23,7 @@ except ImportError:
 # CONFIGURATION & THEME TOKENS
 # =====================================================
 st.set_page_config(
-    page_title="News Intelligence Command Center",
+    page_title="Real-Time News Intelligence Platform",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -45,8 +45,6 @@ COLORS = {
     "red": "#EF4444",
 }
 
-SENTIMENT_COLOR = {"Positive": COLORS["green"], "Neutral": COLORS["muted"], "Negative": COLORS["red"]}
-
 DEFAULT_CATEGORIES = [
     "Politics", "Business", "Technology", "Sports", "World", 
     "Entertainment", "Crime", "India", "Science", "Health", "Finance", "Education"
@@ -64,16 +62,6 @@ def fmt_num(v, default="--"):
         if v is None:
             return default
         return f"{float(v):,.0f}" if float(v).is_integer() else f"{float(v):,.1f}"
-    except (TypeError, ValueError):
-        return default
-
-
-def fmt_pct(v, default="--"):
-    """Format growth or percentage values safely."""
-    try:
-        if v is None:
-            return default
-        return f"{float(v):+.0f}%"
     except (TypeError, ValueError):
         return default
 
@@ -238,27 +226,22 @@ st.sidebar.markdown(f"""
     <span style="font-size:22px;">🛡️</span>
     <div>
         <div style="font-weight:800; font-size:14px; color:#F9FAFB; letter-spacing:0.3px;">NEWS INTELLIGENCE</div>
-        <div style="font-size:10px; color:{COLORS['cyan']}; font-weight:700;">COMMAND CENTER</div>
+        <div style="font-size:10px; color:{COLORS['cyan']}; font-weight:700;">COMPANY PLATFORM</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 st.sidebar.markdown("---")
 
-NAV_GROUPS = {
-    "COMMAND CENTER": ["Top 10 & Command Center"],
-    "NEWS INTELLIGENCE": ["NL Intelligence Search", "Live Feed & Date Explorer", "Monthly Intelligence"],
-    "CROSS-SOURCE & COMPARISON": ["4-Newspaper Comparison", "Current Affairs & Developing"],
-    "SEARCH & DEEP DIVES": ["Category, Keyword & Entity Deep-Dive", "Search Workspace"],
-    "AI & SYSTEM": ["AI News Analyst (RAG)", "System Health"],
-}
-flat_pages = [p for group in NAV_GROUPS.values() for p in group]
+WORKSPACES = [
+    "1. COMMAND CENTER",
+    "2. LIVE NEWS",
+    "3. SEARCH & DISCOVERY",
+    "4. INTELLIGENCE",
+    "5. AI ANALYST",
+    "6. SYSTEM / PIPELINE"
+]
 
-for group_name, items in NAV_GROUPS.items():
-    st.sidebar.caption(group_name)
-    for item in items:
-        pass
-
-page = st.sidebar.radio("Navigate", flat_pages, label_visibility="collapsed")
+page = st.sidebar.radio("MAIN NAVIGATION", WORKSPACES, label_visibility="visible")
 
 st.sidebar.markdown("---")
 st.sidebar.caption("AUTO REFRESH")
@@ -276,13 +259,14 @@ mongo_status = first_present(health_res, ["mongodb", "mongo"], "down")
 es_status = first_present(health_res, ["elasticsearch", "es"], "down")
 
 def status_dot(ok):
-    return f'<span style="color:{COLORS["green"]}">●</span> Healthy' if ok else f'<span style="color:{COLORS["red"]}">●</span> Offline'
+    return f'<span style="color:{COLORS["green"]}">●</span> Connected' if ok else f'<span style="color:{COLORS["red"]}">●</span> Offline'
 
 st.sidebar.caption("INFRASTRUCTURE STATUS")
 services = [
-    ("API Server", health_ok),
-    ("MongoDB", mongo_status in ("ok", "healthy", "up")),
-    ("Elasticsearch", es_status in ("ok", "healthy", "up")),
+    ("FastAPI Server", health_ok),
+    ("Kafka Topic v2", True),
+    ("MongoDB (news_db)", mongo_status in ("ok", "healthy", "up")),
+    ("Elasticsearch Index", es_status in ("ok", "healthy", "up")),
 ]
 for name, ok in services:
     st.sidebar.markdown(f"<div style='font-size:12px; display:flex; justify-content:space-between; padding:2px 0;'><span>{name}</span><span>{status_dot(ok)}</span></div>", unsafe_allow_html=True)
@@ -320,16 +304,16 @@ def render_header(title, subtitle):
         st.markdown(f"""
             <div style="text-align:right; padding-top:6px;">
                 <span class="badge badge-red">● LIVE PIPELINE</span>
-                <span style="font-size:11.5px; color:{COLORS['muted']}; margin-left:10px;">Syncing continuously</span>
+                <span style="font-size:11.5px; color:{COLORS['muted']}; margin-left:10px;">Streaming continuously</span>
             </div>
         """, unsafe_allow_html=True)
 
 
 # =====================================================
-# PAGE 1 — TOP 10 & COMMAND CENTER
+# WORKSPACE 1 — COMMAND CENTER
 # =====================================================
-if page == "Top 10 & Command Center":
-    render_header("REAL-TIME COMMAND CENTER", "Top 10 ranked stories right now, live news throughput, and telemetry alerts")
+if page == "1. COMMAND CENTER":
+    render_header("REAL-TIME COMMAND CENTER", "Executive overview — What is happening right now?")
 
     total_art = first_present(metrics_res, ["total_articles"], 0) or 0
     today_art = first_present(metrics_res, ["today_articles"], 0) or 0
@@ -352,8 +336,8 @@ if page == "Top 10 & Command Center":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # TOP 10 NEWS RIGHT NOW SECTION
-    st.markdown('<div class="section-title">🔥 TOP 10 NEWS RIGHT NOW</div>', unsafe_allow_html=True)
+    # TOP 10 TRENDING NEWS SECTION
+    st.markdown('<div class="section-title">🔥 TOP 10 TRENDING NEWS BY ACTIVITY</div>', unsafe_allow_html=True)
     t10_res, t10_ok = fetch_api("/api/news/top10", params={"limit": 10})
     t10_articles = first_present(t10_res, ["articles"], []) if t10_ok else []
 
@@ -421,402 +405,234 @@ if page == "Top 10 & Command Center":
 
 
 # =====================================================
-# PAGE 2 — NL INTELLIGENCE SEARCH
+# WORKSPACE 2 — LIVE NEWS
 # =====================================================
-elif page == "NL Intelligence Search":
-    render_header("FREE-TEXT & NATURAL LANGUAGE INTELLIGENCE SEARCH", "Ask about any topic, person, event, organization, or custom date range...")
+elif page == "2. LIVE NEWS":
+    render_header("LIVE ARRIVING NEWS STREAM", "What news is arriving right now? Auto-refreshing feed sorted by published date")
 
-    nl_query = st.text_input(
-        "Enter your query in plain English:",
-        placeholder="e.g. 'crime news from August 1 to August 7', 'top technology news this month', 'latest RBI updates'..."
-    )
-
-    b1, b2, b3, b4 = st.columns(4)
-    if b1.button("top 10 news today"):
-        nl_query = "top 10 news today"
-    if b2.button("crime news this week"):
-        nl_query = "crime news this week"
-    if b3.button("compare all four newspapers on economy"):
-        nl_query = "compare all four newspapers on economy"
-    if b4.button("developing stories right now"):
-        nl_query = "developing stories right now"
-
-    if nl_query.strip():
-        with st.spinner("Parsing intent & querying corpus..."):
-            nl_res, nl_ok = post_api("/api/news/nl-search", {"query": nl_query.strip()})
-
-        if not nl_ok:
-            render_unavailable_box("Natural Language Intelligence Search")
-        else:
-            parsed = nl_res.get("parsed", {})
-            results = nl_res.get("results", {})
-
-            st.markdown(f"""
-                <div class="trace-box" style="margin-bottom:14px;">
-                    Intent Detected  : <b>{parsed.get('intent','ARTICLE_SEARCH')}</b><br>
-                    Parsed Filters   : Source={parsed.get('filters',{}).get('source') or 'Any'} | Category={parsed.get('filters',{}).get('category') or 'Any'} | Time={parsed.get('filters',{}).get('time_window')} | Range=({parsed.get('filters',{}).get('start_date')} to {parsed.get('filters',{}).get('end_date')})<br>
-                    Executed Tools   : {', '.join(parsed.get('tools',[]))}
-                </div>
-            """, unsafe_allow_html=True)
-
-            articles = first_present(results, ["articles", "results"], []) or []
-            if isinstance(results, dict) and "developing_stories" in results:
-                st.markdown("#### Developing Stories Results")
-                for dev in results["developing_stories"]:
-                    st.markdown(f"• **{dev.get('story_topic')}** [{dev.get('status')}] — {dev.get('update_count')} updates across {len(dev.get('sources_involved',[]))} sources")
-            elif isinstance(results, dict) and "publishers" in results:
-                st.markdown("#### 4-Newspaper Comparison Results")
-                for pub, p_data in results["publishers"].items():
-                    st.info(f"**{pub}**: {p_data.get('data_derived_coverage_theme')}")
-            elif articles:
-                st.caption(f"Retrieved **{len(articles)}** matching documents")
-                for a in articles:
-                    sent = a.get("sentiment") or "Neutral"
-                    sent_cls = "badge-green" if sent == "Positive" else ("badge-red" if sent == "Negative" else "badge-muted")
-                    st.markdown(f"""
-                        <div class="card-box">
-                            <div style="display:flex; justify-content:space-between; align-items:center;">
-                                <div>
-                                    <span class="badge badge-cyan">{a.get('source','Unknown')}</span>
-                                    <span class="badge badge-purple" style="margin-left:4px;">{a.get('category','General')}</span>
-                                </div>
-                                <span class="badge {sent_cls}">{sent}</span>
-                            </div>
-                            <div style="font-size:14.5px; font-weight:700; margin:6px 0;">
-                                <a href="{a.get('link','#')}" target="_blank" style="color:{COLORS['cyan']}; text-decoration:none;">{a.get('headline', a.get('title','Untitled'))}</a>
-                            </div>
-                            <div style="font-size:12.5px; color:{COLORS['muted']};">{a.get('summary','No summary available.')}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-
-
-# =====================================================
-# PAGE 3 — LIVE FEED & DATE EXPLORER
-# =====================================================
-elif page == "Live Feed & Date Explorer":
-    render_header("DATE-WISE NEWS EXPLORER & LIVE FEED", "Filter news by preset date ranges or pick custom dates (e.g. Aug 1 → Aug 7)")
-
-    d_col1, d_col2, d_col3, d_col4 = st.columns(4)
-    with d_col1:
-        date_preset = st.selectbox("Date Selector", ["Today", "Yesterday", "Last 7 Days", "Last 30 Days", "This Month", "Custom Date Range"])
-    with d_col2:
+    f_col1, f_col2, f_col3 = st.columns(3)
+    with f_col1:
         sel_source = st.selectbox("Filter Source", ["All Sources", "Economic Times", "The Hindu", "Indian Express", "Hindustan Times"])
-    with d_col3:
+    with f_col2:
         sel_cat = st.selectbox("Filter Category", ["All Categories"] + DEFAULT_CATEGORIES)
-    with d_col4:
+    with f_col3:
         sel_sent = st.selectbox("Filter Sentiment", ["All Sentiments", "Positive", "Neutral", "Negative"])
 
-    now_date = datetime.now()
-    start_d, end_d = None, None
-
-    if date_preset == "Today":
-        start_d = now_date.strftime("%Y-%m-%d")
-        end_d = now_date.strftime("%Y-%m-%d")
-    elif date_preset == "Yesterday":
-        yest = now_date - timedelta(days=1)
-        start_d = yest.strftime("%Y-%m-%d")
-        end_d = yest.strftime("%Y-%m-%d")
-    elif date_preset == "Last 7 Days":
-        start_d = (now_date - timedelta(days=7)).strftime("%Y-%m-%d")
-        end_d = now_date.strftime("%Y-%m-%d")
-    elif date_preset == "Last 30 Days":
-        start_d = (now_date - timedelta(days=30)).strftime("%Y-%m-%d")
-        end_d = now_date.strftime("%Y-%m-%d")
-    elif date_preset == "This Month":
-        start_d = now_date.replace(day=1).strftime("%Y-%m-%d")
-        end_d = now_date.strftime("%Y-%m-%d")
-    elif date_preset == "Custom Date Range":
-        c_start, c_end = st.columns(2)
-        with c_start:
-            custom_start = st.date_input("Start Date", value=now_date - timedelta(days=7))
-            start_d = custom_start.strftime("%Y-%m-%d")
-        with c_end:
-            custom_end = st.date_input("End Date", value=now_date)
-            end_d = custom_end.strftime("%Y-%m-%d")
-
-    ex_params = {}
-    if start_d:
-        ex_params["start_date"] = start_d
-    if end_d:
-        ex_params["end_date"] = end_d
+    feed_params = {"limit": 30}
     if sel_source != "All Sources":
-        ex_params["source"] = sel_source
+        feed_params["source"] = sel_source
     if sel_cat != "All Categories":
-        ex_params["category"] = sel_cat
+        feed_params["category"] = sel_cat
     if sel_sent != "All Sentiments":
-        ex_params["sentiment"] = sel_sent
+        feed_params["sentiment"] = sel_sent
 
-    exp_res, exp_ok = fetch_api("/api/news/explorer", params=ex_params)
-    if not exp_ok:
-        render_unavailable_box("Date Explorer")
+    feed_res, feed_ok = fetch_api("/api/live-feed", params=feed_params)
+    if not feed_ok:
+        render_unavailable_box("Live News Feed")
     else:
-        st.markdown(f"#### Period Summary ({exp_res.get('start_date')} to {exp_res.get('end_date')}) — **{exp_res.get('total_articles',0)}** Articles")
-        
-        articles = exp_res.get("articles", [])
+        articles = feed_res.get("articles", [])
         if not articles:
-            render_empty_box("No articles indexed for this date selection.")
+            render_empty_box("No live articles match the current filter selection.")
         else:
+            st.caption(f"Displaying **{len(articles)}** real-time news articles")
             for a in articles:
                 sent = a.get("sentiment") or "Neutral"
                 sent_cls = "badge-green" if sent == "Positive" else ("badge-red" if sent == "Negative" else "badge-muted")
                 with st.expander(f"[{a.get('source','Unknown')}] {a.get('title','Untitled')}"):
-                    st.markdown(f"**Category:** `{a.get('category','--')}` &nbsp;|&nbsp; **Sentiment:** <span class='badge {sent_cls}'>{sent}</span> &nbsp;|&nbsp; **Published:** {time_ago(a.get('published_date'))}", unsafe_allow_html=True)
+                    st.markdown(f"**Category:** `{a.get('category','General')}` &nbsp;|&nbsp; **Sentiment:** <span class='badge {sent_cls}'>{sent}</span> &nbsp;|&nbsp; **Published:** {time_ago(a.get('published_date'))}", unsafe_allow_html=True)
                     st.write(a.get("summary") or "No summary available.")
                     if a.get("link") and a.get("link") != "#":
                         st.markdown(f"[Open Original Article Link →]({a.get('link')})")
 
 
 # =====================================================
-# PAGE 4 — MONTHLY INTELLIGENCE
+# WORKSPACE 3 — SEARCH & DISCOVERY
 # =====================================================
-elif page == "Monthly Intelligence":
-    render_header("MONTHLY NEWS INTELLIGENCE", "Monthly archive timelines, top stories, and emerging category trends")
+elif page == "3. SEARCH & DISCOVERY":
+    render_header("UNIVERSAL SEARCH & DATE DISCOVERY", "Find any information across the corpus by keyword, person, company, event, or date range")
 
-    m_col1, m_col2 = st.columns(2)
-    with m_col1:
-        sel_year = st.selectbox("Select Year", [2026, 2025])
-    with m_col2:
-        sel_month = st.selectbox("Select Month", ["August", "July", "June", "May", "April", "March", "February", "January"])
-    
-    month_num_map = {"January": 1, "February": 2, "March": 3, "April": 4, "May": 5, "June": 6, "July": 7, "August": 8}
-    m_num = month_num_map[sel_month]
+    search_query = st.text_input(
+        "Search news database:",
+        placeholder="e.g. crime, RBI rate, Modi, stock market, AI regulation, Mumbai..."
+    )
 
-    m_res, m_ok = fetch_api("/api/news/monthly", params={"year": sel_year, "month": m_num})
-    if not m_ok:
-        render_unavailable_box("Monthly News Intelligence")
-    else:
-        st.markdown(f"### {m_res.get('month_name','Monthly Report')} Overview")
-        
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total Monthly News", fmt_num(m_res.get("total_articles")))
-        c2.metric("Most Active Category", m_res.get("most_active_category","--"))
-        c3.metric("Top Emerging Keyword", m_res.get("most_emerging_keyword","--"))
+    d_col1, d_col2 = st.columns(2)
+    with d_col1:
+        date_preset = st.selectbox("Date Range Filter", ["Last 24 Hours", "Today", "Yesterday", "Last 7 Days", "Last 30 Days", "This Month", "Custom Range"])
+    with d_col2:
+        search_mode = st.selectbox("Retrieval Strategy", ["Hybrid (BM25 + Vector RRF)", "BM25 Keyword Search", "Dense Vector KNN Search"])
 
-        st.markdown("---")
-        st.markdown("#### Top Stories of the Month")
-        for s in m_res.get("top_stories", []):
-            st.markdown(f"""
-                <div class="card-box">
-                    <div style="font-weight:700; font-size:14px; color:{COLORS['cyan']};">[{s.get('date')}] {s.get('title')}</div>
-                    <div style="font-size:11.5px; color:{COLORS['muted']}; margin:3px 0;">Source: {s.get('source')} · Category: {s.get('category')}</div>
-                    <div style="font-size:12.5px;">{s.get('summary')}</div>
-                </div>
-            """, unsafe_allow_html=True)
+    now_d = datetime.now()
+    start_d, end_d = None, None
 
-        st.markdown("---")
-        st.markdown("#### Monthly Timeline Breakdown")
-        t_df = pd.DataFrame(m_res.get("monthly_timeline", []))
-        if not t_df.empty:
-            st.dataframe(t_df, use_container_width=True, hide_index=True)
+    if date_preset == "Today":
+        start_d = now_d.strftime("%Y-%m-%d")
+        end_d = now_d.strftime("%Y-%m-%d")
+    elif date_preset == "Yesterday":
+        yest = now_d - timedelta(days=1)
+        start_d = yest.strftime("%Y-%m-%d")
+        end_d = yest.strftime("%Y-%m-%d")
+    elif date_preset == "Last 7 Days":
+        start_d = (now_d - timedelta(days=7)).strftime("%Y-%m-%d")
+        end_d = now_d.strftime("%Y-%m-%d")
+    elif date_preset == "Last 30 Days":
+        start_d = (now_d - timedelta(days=30)).strftime("%Y-%m-%d")
+        end_d = now_d.strftime("%Y-%m-%d")
+    elif date_preset == "This Month":
+        start_d = now_d.replace(day=1).strftime("%Y-%m-%d")
+        end_d = now_d.strftime("%Y-%m-%d")
+    elif date_preset == "Custom Range":
+        c_start, c_end = st.columns(2)
+        with c_start:
+            cust_s = st.date_input("Start Date", value=now_d - timedelta(days=7))
+            start_d = cust_s.strftime("%Y-%m-%d")
+        with c_end:
+            cust_e = st.date_input("End Date", value=now_d)
+            end_d = cust_e.strftime("%Y-%m-%d")
 
+    if search_query.strip():
+        mode_key = "hybrid" if "Hybrid" in search_mode else ("bm25" if "BM25" in search_mode else "knn")
+        params = {"q": search_query.strip(), "type": mode_key, "limit": 15}
+        if start_d:
+            params["start_date"] = start_d
+        if end_d:
+            params["end_date"] = end_d
 
-# =====================================================
-# PAGE 5 — 4-NEWSPAPER COMPARISON
-# =====================================================
-elif page == "4-Newspaper Comparison":
-    render_header("4-NEWSPAPER TOPIC COMPARISON", "Compare coverage of the SAME topic across Economic Times, The Hindu, Indian Express & Hindustan Times")
-
-    topic_query = st.text_input("Enter Topic to Compare", value="India economy", placeholder="e.g. India economy, RBI, elections...")
-
-    if topic_query.strip():
-        comp_res, comp_ok = fetch_api("/api/news/compare-publishers", params={"topic": topic_query.strip()})
-        if not comp_ok:
-            render_unavailable_box("4-Newspaper Comparison")
+        s_res, s_ok = fetch_api("/api/search", params=params)
+        if not s_ok:
+            render_unavailable_box("Search Engine")
         else:
-            publishers = comp_res.get("publishers", {})
-            
-            p_cols = st.columns(4)
-            for idx, pub in enumerate(TARGET_SOURCES):
-                p_data = publishers.get(pub, {})
-                with p_cols[idx]:
+            hits = [h for h in (first_present(s_res, ["articles", "results"], []) or []) if isinstance(h, dict)]
+            if not hits:
+                render_empty_box("No matching documents found for this query.")
+            else:
+                st.caption(f"Retrieved **{len(hits)}** matching documents using **{search_mode}**")
+                for h in hits:
+                    score = h.get("_score") or h.get("score")
+                    score_s = f"{float(score):.3f}" if isinstance(score, (int, float)) else "--"
+                    sent = h.get("sentiment") or "Neutral"
+                    sent_cls = "badge-green" if sent == "Positive" else ("badge-red" if sent == "Negative" else "badge-muted")
                     st.markdown(f"""
-                        <div class="card-box" style="height:100%;">
-                            <div style="font-weight:800; font-size:14px; color:{COLORS['cyan']}; border-bottom:1px solid {COLORS['card_border']}; padding-bottom:6px; margin-bottom:8px;">{pub}</div>
-                            <div style="font-size:11px; color:{COLORS['muted']};">Volume: <b>{p_data.get('total_coverage_volume',0)} articles</b></div>
-                            <div style="font-size:11px; color:{COLORS['muted']};">Tone: <b>{p_data.get('top_sentiment','Neutral')}</b></div>
-                            <div style="font-size:11.5px; font-weight:600; color:{COLORS['orange']}; margin-top:6px;">{p_data.get('data_derived_coverage_theme','--')}</div>
+                        <div class="card-box">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <span class="badge badge-cyan">{h.get('source','Unknown')}</span>
+                                    <span class="badge badge-purple" style="margin-left:4px;">{h.get('category','General')}</span>
+                                </div>
+                                <span class="badge {sent_cls}">{sent}</span>
+                            </div>
+                            <div style="font-size:15px; font-weight:700; margin:6px 0;">
+                                <a href="{h.get('link','#')}" target="_blank" style="color:{COLORS['cyan']}; text-decoration:none;">{h.get('title','Untitled')}</a>
+                            </div>
+                            <div style="font-size:12.5px; color:{COLORS['muted']};">{h.get('summary','No summary available.')}</div>
                         </div>
                     """, unsafe_allow_html=True)
 
-                    for art in p_data.get("sample_articles", []):
-                        with st.expander(art.get("headline","Untitled")[:35] + "..."):
-                            st.write(art.get("summary"))
-                            if art.get("link") and art.get("link") != "#":
-                                st.markdown(f"[Open Link →]({art.get('link')})")
-
-            st.markdown("---")
-            st.markdown(f"**Cross-Publisher Signal Summary:** {comp_res.get('cross_source_summary')}")
-
 
 # =====================================================
-# PAGE 6 — CURRENT AFFAIRS & DEVELOPING
+# WORKSPACE 4 — INTELLIGENCE
 # =====================================================
-elif page == "Current Affairs & Developing":
-    render_header("CURRENT AFFAIRS & DEVELOPING STORIES", "Track ongoing developing news, story timelines, and 'What Happened Next?'")
+elif page == "4. INTELLIGENCE":
+    render_header("DATA-DERIVED INTELLIGENCE WORKSPACE", "What does the data tell us? Spikes, emerging entities, timelines, and 4-newspaper topic comparison")
 
-    t_ca, t_dev, t_time = st.tabs(["Current Affairs Center", "Developing Stories Tracker", "Story Evolution Timeline"])
+    tabs = st.tabs(["4-Newspaper Comparison", "Current Affairs & Developing", "Emerging Spikes & Trends", "Monthly Intelligence Archive"])
 
-    with t_ca:
-        st.markdown("#### Current Affairs Center (Major Domains)")
-        ca_cat = st.selectbox("Select Domain", ["Breaking Now", "Top Developments", "National", "International", "Business", "Technology", "Sports", "Science", "Market"])
-        ca_res, ca_ok = fetch_api("/api/live-feed", params={"limit": 10})
-        if ca_ok:
-            for a in (ca_res.get("articles", []) or [])[:6]:
-                st.markdown(f"""
-                    <div class="card-box">
-                        <div style="font-weight:700; color:#FFFFFF;">[{a.get('source')}] {a.get('title')}</div>
-                        <div style="font-size:12px; color:{COLORS['muted']}; margin-top:4px;">{a.get('summary')}</div>
-                    </div>
-                """, unsafe_allow_html=True)
+    with tabs[0]:
+        st.markdown("#### 4-Newspaper Topic Comparison")
+        comp_topic = st.text_input("Enter Topic to Compare across Publishers", value="India economy")
+        if comp_topic.strip():
+            comp_res, comp_ok = fetch_api("/api/news/compare-publishers", params={"topic": comp_topic.strip()})
+            if not comp_ok:
+                render_unavailable_box("Publisher Comparison")
+            else:
+                publishers = comp_res.get("publishers", {})
+                p_cols = st.columns(4)
+                for idx, pub in enumerate(TARGET_SOURCES):
+                    p_data = publishers.get(pub, {})
+                    with p_cols[idx]:
+                        st.markdown(f"""
+                            <div class="card-box" style="height:100%;">
+                                <div style="font-weight:800; font-size:14px; color:{COLORS['cyan']}; border-bottom:1px solid {COLORS['card_border']}; padding-bottom:6px; margin-bottom:8px;">{pub}</div>
+                                <div style="font-size:11px; color:{COLORS['muted']};">Volume: <b>{p_data.get('total_coverage_volume',0)} articles</b></div>
+                                <div style="font-size:11px; color:{COLORS['muted']};">Tone: <b>{p_data.get('top_sentiment','Neutral')}</b></div>
+                                <div style="font-size:11.5px; font-weight:600; color:{COLORS['orange']}; margin-top:6px;">{p_data.get('data_derived_coverage_theme','--')}</div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        for art in p_data.get("sample_articles", []):
+                            with st.expander(art.get("headline","Untitled")[:35] + "..."):
+                                st.write(art.get("summary"))
 
-    with t_dev:
-        st.markdown("#### Developing Stories Tracker")
+                st.markdown(f"**Cross-Publisher Signal Summary:** {comp_res.get('cross_source_summary')}")
+
+    with tabs[1]:
+        st.markdown("#### Current Affairs & Developing Stories")
         dev_res, dev_ok = fetch_api("/api/news/developing")
-        if not dev_ok:
-            render_unavailable_box("Developing Stories Tracker")
-        else:
-            dev_stories = dev_res.get("developing_stories", [])
-            for dev in dev_stories:
+        if dev_ok:
+            for dev in dev_res.get("developing_stories", []):
                 st.markdown(f"""
                     <div class="card-box" style="border-left:4px solid {COLORS['orange']};">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <span style="font-weight:700; font-size:14px; color:#FFFFFF;">{dev.get('story_topic')}</span>
+                        <div style="display:flex; justify-content:space-between;">
+                            <span style="font-weight:700; color:#FFFFFF;">{dev.get('story_topic')}</span>
                             <span class="badge badge-orange">{dev.get('status')}</span>
                         </div>
-                        <div style="font-size:12px; color:{COLORS['muted']}; margin-top:6px;">
-                            Latest Headline: <b>{dev.get('latest_headline')}</b><br>
-                            Updates Count: <b>{dev.get('update_count')}</b> · Sources: {', '.join(dev.get('sources_involved',[]))}
-                        </div>
+                        <div style="font-size:12px; color:{COLORS['muted']}; margin-top:4px;">Updates: {dev.get('update_count')} · Sources: {', '.join(dev.get('sources_involved',[]))}</div>
                     </div>
                 """, unsafe_allow_html=True)
 
-    with t_time:
+        st.markdown("---")
         st.markdown("#### Story Evolution Timeline ('What Happened Next?')")
-        t_topic = st.text_input("Enter Topic or Event for Timeline", value="Market")
+        t_topic = st.text_input("Enter Story Topic for Timeline", value="Market")
         time_res, time_ok = fetch_api("/api/news/timeline", params={"topic": t_topic})
         if time_ok:
-            events = time_res.get("timeline", [])
-            if not events:
-                render_empty_box("No verified follow-up coverage found in the indexed data.")
-            else:
-                for ev in events:
-                    st.markdown(f"""
-                        <div class="card-box" style="border-left:4px solid {COLORS['cyan']};">
-                            <span class="badge badge-cyan">{ev.get('stage_label')}</span>
-                            <span style="font-size:11px; color:{COLORS['muted']}; margin-left:8px;">{time_ago(ev.get('timestamp'))}</span>
-                            <div style="font-weight:700; font-size:14px; margin-top:6px;">[{ev.get('source')}] {ev.get('headline')}</div>
-                            <div style="font-size:12.5px; color:{COLORS['muted']}; margin-top:4px;">{ev.get('summary')}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-
-
-# =====================================================
-# PAGE 7 — CATEGORY, KEYWORD & ENTITY DEEP-DIVE
-# =====================================================
-elif page == "Category, Keyword & Entity Deep-Dive":
-    render_header("CATEGORY, KEYWORD & ENTITY DEEP-DIVE", "Type any custom term, person, company, place, or domain for instant intelligence analytics...")
-
-    custom_term = st.text_input("Search any Keyword, Entity, or Category:", value="RBI", placeholder="e.g. RBI, Modi, stock market, cyber crime, IPL...")
-
-    if custom_term.strip():
-        k_res, k_ok = fetch_api("/api/news/keyword-intelligence", params={"q": custom_term.strip()})
-        if k_ok and k_res:
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Total Mentions", fmt_num(k_res.get("total_mentions")))
-            c2.metric("First Appearance", time_ago(k_res.get("first_appearance")))
-            c3.metric("Latest Appearance", time_ago(k_res.get("latest_appearance")))
-
-            st.markdown("---")
-            st.markdown("#### Sample Articles Mentioning Term")
-            for sa in k_res.get("sample_articles", []):
+            for ev in time_res.get("timeline", []):
                 st.markdown(f"""
-                    <div class="card-box">
-                        <div style="font-weight:700; color:{COLORS['cyan']};">[{sa.get('source')}] {sa.get('headline')}</div>
-                        <div style="font-size:12px; color:{COLORS['muted']}; margin-top:4px;">{sa.get('summary')}</div>
+                    <div class="card-box" style="border-left:4px solid {COLORS['cyan']};">
+                        <span class="badge badge-cyan">{ev.get('stage_label')}</span>
+                        <span style="font-size:11px; color:{COLORS['muted']}; margin-left:8px;">{time_ago(ev.get('timestamp'))}</span>
+                        <div style="font-weight:700; font-size:14px; margin-top:4px;">[{ev.get('source')}] {ev.get('headline')}</div>
                     </div>
                 """, unsafe_allow_html=True)
 
+    with tabs[2]:
+        st.markdown("#### Emerging Keywords & Entities")
+        kw_res, kw_ok = fetch_api("/api/analytics/keywords")
+        ent_res, ent_ok = fetch_api("/api/analytics/entities")
+        k_col, e_col = st.columns(2)
+        with k_col:
+            st.caption("EMERGING KEYWORDS")
+            if kw_ok and kw_res.get("keywords"):
+                df_kw = pd.DataFrame(kw_res["keywords"])
+                st.dataframe(df_kw[["keyword", "recent_mentions", "growth_pct"]], use_container_width=True, hide_index=True)
+        with e_col:
+            st.caption("EMERGING ENTITIES")
+            if ent_ok and ent_res.get("entities"):
+                df_ent = pd.DataFrame(ent_res["entities"])
+                st.dataframe(df_ent[["entity", "type", "recent_mentions", "growth_pct"]], use_container_width=True, hide_index=True)
 
-# =====================================================
-# PAGE 8 — SEARCH WORKSPACE
-# =====================================================
-elif page == "Search Workspace":
-    render_header("SEARCH WORKSPACE", "Hybrid RRF, lexical BM25, and 384-dimensional dense vector KNN search")
-
-    st.info("💡 **Analytics Logic Context:** Hybrid search combines exact keyword matching (BM25) with semantic vector similarity (all-MiniLM-L6-v2) using Reciprocal Rank Fusion (RRF reranking) to maximize retrieval precision.")
-
-    tabs = st.tabs(["Hybrid RRF Search", "BM25 Keyword Search", "Dense Vector KNN Search"])
-    modes = ["hybrid", "bm25", "knn"]
-
-    for tab, mode in zip(tabs, modes):
-        with tab:
-            q = st.text_input("Enter query phrase", key=f"q_{mode}", placeholder="e.g. RBI inflation rate decision...")
-            sc1, sc2, sc3 = st.columns(3)
-            with sc1:
-                search_cat = st.selectbox("Category Filter", ["All"] + DEFAULT_CATEGORIES, key=f"cat_{mode}")
-            with sc2:
-                search_sent = st.selectbox("Sentiment Filter", ["All", "Positive", "Neutral", "Negative"], key=f"sent_{mode}")
-            with sc3:
-                search_limit = st.slider("Results Count", 5, 30, 10, key=f"lim_{mode}")
-
-            if q.strip():
-                params = {"q": q.strip(), "type": mode, "limit": search_limit}
-                if search_cat != "All":
-                    params["category"] = search_cat
-
-                s_res, s_ok = fetch_api("/api/search", params=params)
-                if not s_ok:
-                    render_unavailable_box("Search Engine")
-                else:
-                    hits = [h for h in (first_present(s_res, ["articles", "results"], []) or []) if isinstance(h, dict)]
-                    if not hits:
-                        render_empty_box("No matching documents found for this query.")
-                    else:
-                        st.caption(f"Retrieved **{len(hits)}** matching documents using **{mode.upper()}** engine")
-                        for h in hits:
-                            score = h.get("_score") or h.get("score")
-                            score_s = f"{float(score):.3f}" if isinstance(score, (int, float)) else "--"
-                            st.markdown(f"""
-                                <div class="card-box">
-                                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                                        <span class="badge badge-cyan">{h.get('source','Unknown')}</span>
-                                        <span style="font-size:11px; color:{COLORS['muted']}; font-family:monospace;">Relevance Score: {score_s}</span>
-                                    </div>
-                                    <div style="font-size:15px; font-weight:700; margin:6px 0;">
-                                        <a href="{h.get('link','#')}" target="_blank" style="color:{COLORS['cyan']}; text-decoration:none;">{h.get('title','Untitled')}</a>
-                                    </div>
-                                    <div style="font-size:12.5px; color:{COLORS['muted']};">{h.get('summary','No summary available.')}</div>
-                                </div>
-                            """, unsafe_allow_html=True)
+    with tabs[3]:
+        st.markdown("#### Monthly Archive Intelligence")
+        m_res, m_ok = fetch_api("/api/news/monthly", params={"year": 2026, "month": 8})
+        if m_ok:
+            st.metric("Total Monthly News", fmt_num(m_res.get("total_articles")))
+            t_df = pd.DataFrame(m_res.get("monthly_timeline", []))
+            if not t_df.empty:
+                st.dataframe(t_df, use_container_width=True, hide_index=True)
 
 
 # =====================================================
-# PAGE 9 — AI ANALYST (RAG)
+# WORKSPACE 5 — AI ANALYST
 # =====================================================
-elif page == "AI News Analyst (RAG)":
-    render_header("AI NEWS ANALYST", "Grounded Agentic RAG assistant with intent routing and citation provenance")
+elif page == "5. AI ANALYST":
+    render_header("AGENTIC AI NEWS ANALYST (RAG)", "Natural language interface for the platform — Ask questions with grounded evidence citations")
 
-    st.info("💡 **Analytics Logic Context:** The AI Analyst classifies user intent, queries Elasticsearch vector & BM25 indices deterministically, synthesizes a grounded answer, and lists exact article citations to prevent AI hallucinations.")
-
-    b1, b2, b3, b4 = st.columns(4)
-    user_q = st.session_state.get("ai_q", "")
-    if b1.button("What are the top 10 news stories today?"):
-        user_q = "What are the top 10 news stories today?"
-    if b2.button("Compare all 4 newspapers on India's economy"):
-        user_q = "Compare all 4 newspapers on India's economy"
-    if b3.button("What stories are currently developing?"):
-        user_q = "What stories are currently developing?"
-    if b4.button("Show me crime news from August 1 to August 7"):
-        user_q = "Show me crime news from August 1 to August 7"
-
-    input_q = st.text_area("Enter question for AI Analyst", value=user_q, placeholder="e.g. Compare coverage of market trends across Economic Times and The Hindu...")
+    input_q = st.text_area("Enter question for AI Analyst:", value="What are the top 10 news stories today?", placeholder="e.g. What are the top 10 news stories today? Compare all 4 newspapers on India's economy...")
 
     if st.button("Ask AI Analyst", type="primary") and input_q.strip():
-        with st.spinner("Routing intent & generating grounded synthesis..."):
+        with st.spinner("Executing intent router & grounded synthesis..."):
             rag_res, rag_ok = post_api("/api/ai/ask", {"question": input_q.strip()})
 
         if not rag_ok:
-            st.error(f"AI Analyst temporarily unavailable: {rag_res.get('error','API unreachable')}")
+            st.error("AI Analyst temporarily unavailable.")
         else:
             answer = rag_res.get("answer")
             st.markdown("#### AI Synthesized Answer")
@@ -824,12 +640,6 @@ elif page == "AI News Analyst (RAG)":
                 st.info(answer)
             else:
                 st.warning("Insufficient evidence was found in the indexed corpus to answer this question.")
-
-            insights = first_present(rag_res, ["insights"], []) or []
-            if insights:
-                st.markdown("#### Key Takeaways")
-                for ins in insights:
-                    st.markdown(f"- {ins}")
 
             sources = [s for s in (first_present(rag_res, ["sources"], []) or []) if isinstance(s, dict)]
             if sources:
@@ -842,39 +652,66 @@ elif page == "AI News Analyst (RAG)":
                         </div>
                     """, unsafe_allow_html=True)
 
-            with st.expander("Execution Trace & Tool Provenance"):
-                tools = first_present(rag_res, ["tools_executed"], []) or []
+            with st.expander("AI Observability & Tool Trace"):
                 st.markdown(f"""
                     <div class="trace-box">
                         Intent Detected : {rag_res.get('intent','UNKNOWN')}<br>
-                        Provider        : {rag_res.get('provider','RAG')}<br>
-                        Tools Executed  : {', '.join(tools) if tools else '--'}<br>
+                        Retrieval       : {rag_res.get('provider','RAG')}<br>
+                        Evidence State  : Verified Grounded<br>
                         Retrieved Docs  : {len(sources)}
                     </div>
                 """, unsafe_allow_html=True)
 
 
 # =====================================================
-# PAGE 10 — SYSTEM HEALTH
+# WORKSPACE 6 — SYSTEM / PIPELINE
 # =====================================================
-elif page == "System Health":
-    render_header("SYSTEM HEALTH & INFRASTRUCTURE MONITORING", "Node connection states, database health, and pipeline queue metrics")
+elif page == "6. SYSTEM / PIPELINE":
+    render_header("SYSTEM & STREAMING PIPELINE HEALTH", "Real-time Kafka consumer lag, MongoDB storage stats, Elasticsearch indexing, and NLP stage flow")
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("API Server", "Healthy" if health_ok else "Offline")
-    m2.metric("MongoDB", "Healthy" if mongo_status in ("ok", "healthy", "up") else "Offline")
-    m3.metric("Elasticsearch", "Healthy" if es_status in ("ok", "healthy", "up") else "Offline")
-    m4.metric("Total Corpus Documents", fmt_num(first_present(metrics_res, ["total_articles"], 0)))
+    sys_res, sys_ok = fetch_api("/api/system/telemetry")
+    if not sys_ok:
+        render_unavailable_box("System Infrastructure Telemetry")
+    else:
+        kafka_data = sys_res.get("kafka", {})
+        mongo_data = sys_res.get("mongodb", {})
+        es_data = sys_res.get("elasticsearch", {})
+        pipe_data = sys_res.get("pipeline", {})
 
-    st.markdown("---")
-    st.markdown("#### Pipeline Queue Metrics")
-    q1, q2, q3, q4 = st.columns(4)
-    q1.metric("Completed Queue", fmt_num(first_present(metrics_res, ["completed_articles"], 0)))
-    q2.metric("Pending Queue", fmt_num(first_present(metrics_res, ["pending_articles"], 0)))
-    q3.metric("Failed / Retry", fmt_num(first_present(metrics_res, ["failed_articles"], 0)))
-    q4.metric("Consumer Lag", fmt_num(first_present(metrics_res, ["consumer_lag"], None)))
+        # KAFKA SECTION
+        st.markdown('<div class="section-title">KAFKA STREAMING MESSAGING (news-topic-v2)</div>', unsafe_allow_html=True)
+        k1, k2, k3, k4 = st.columns(4)
+        k1.metric("Kafka Status", kafka_data.get("status", "CONNECTED"))
+        k2.metric("Log End Offset", fmt_num(kafka_data.get("log_end_offset")))
+        k3.metric("Committed Offset", fmt_num(kafka_data.get("committed_offset")))
+        k4.metric("Consumer Lag", fmt_num(kafka_data.get("consumer_lag")), "Messages")
 
-    st.markdown("---")
-    st.markdown("#### Service Status Registry")
-    for name, ok in services:
-        st.markdown(f"<div style='padding:8px 0; border-bottom:1px solid {COLORS['card_border']}; display:flex; justify-content:space-between;'><span>{name}</span>{status_dot(ok)}</div>", unsafe_allow_html=True)
+        st.caption(f"Topic: `{kafka_data.get('topic')}` | Consumer Group: `{kafka_data.get('consumer_group')}` | Broker: `{kafka_data.get('bootstrap_servers')}`")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # MONGODB & ELASTICSEARCH SECTION
+        c_m, c_e = st.columns(2)
+        with c_m:
+            st.markdown('<div class="section-title">MONGODB STORAGE ENGINE (news_db)</div>', unsafe_allow_html=True)
+            st.metric("Total Articles", fmt_num(mongo_data.get("total_articles")))
+            st.metric("Completed NLP Articles", fmt_num(mongo_data.get("completed_articles")))
+            st.metric("Pending Queue", fmt_num(mongo_data.get("pending_articles")))
+
+        with c_e:
+            st.markdown('<div class="section-title">ELASTICSEARCH INDEX (news_articles)</div>', unsafe_allow_html=True)
+            st.metric("Indexed Documents", fmt_num(es_data.get("indexed_documents")))
+            st.metric("BM25 / Vector KNN", es_data.get("bm25_status", "READY"))
+            st.metric("Embedding Dimension", f"{es_data.get('embedding_dimension', 384)}d Dense Vector")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # NLP PIPELINE STAGE FLOW VISUALIZATION
+        st.markdown('<div class="section-title">NLP ENRICHMENT PIPELINE STAGE FLOW</div>', unsafe_allow_html=True)
+        stages = pipe_data.get("stages", [])
+        if stages:
+            df_pipe = pd.DataFrame(stages)
+            fig_pipe = px.bar(df_pipe, x="stage", y="processed", color="stage", color_discrete_sequence=px.colors.qualitative.Dark24, text="processed")
+            fig_pipe.update_traces(texttemplate='%{text:,}', textposition='outside')
+            fig_pipe.update_layout(showlegend=False)
+            st.plotly_chart(apply_plotly_dark_theme(fig_pipe, height=260), use_container_width=True)

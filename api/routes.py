@@ -496,3 +496,39 @@ def ai_ask_question(req: AskQuestionRequest):
             "status": "ERROR",
             "error": str(e)
         }
+
+# =====================================================
+# Phase 17 — System Infrastructure Telemetry Endpoints
+# =====================================================
+
+from api.system_telemetry import (
+    get_kafka_telemetry,
+    get_mongodb_telemetry,
+    get_elasticsearch_telemetry,
+    get_nlp_pipeline_stages
+)
+
+@router.get("/api/system/kafka")
+def api_system_kafka():
+    return get_kafka_telemetry()
+
+@router.get("/api/system/mongodb")
+def api_system_mongodb():
+    return get_mongodb_telemetry(realtime_collection)
+
+@router.get("/api/system/elasticsearch")
+def api_system_elasticsearch():
+    return get_elasticsearch_telemetry()
+
+@router.get("/api/system/pipeline")
+def api_system_pipeline():
+    return get_nlp_pipeline_stages(realtime_collection)
+
+@router.get("/api/system/telemetry")
+def api_system_telemetry():
+    return {
+        "kafka": get_kafka_telemetry(),
+        "mongodb": get_mongodb_telemetry(realtime_collection),
+        "elasticsearch": get_elasticsearch_telemetry(),
+        "pipeline": get_nlp_pipeline_stages(realtime_collection)
+    }
