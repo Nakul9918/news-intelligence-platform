@@ -2,11 +2,12 @@
 Project Configuration
 News Intelligence Platform
 """
-# =====================================================
-# MongoDB Configuration
-# =====================================================
+import os
+from dotenv import load_dotenv
 
-MONGO_URI = "mongodb://127.0.0.1:27017"
+load_dotenv()
+
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017")
 
 DATABASE_NAME = "news_db"
 

@@ -161,11 +161,13 @@ def api_available() -> bool:
 
 @st.cache_resource(show_spinner=False)
 def _get_mongo_db():
-    """Singleton MongoDB connection for dashboard offline fallback."""
+    """Singleton MongoDB connection for dashboard fallback."""
     if not _MONGO_AVAILABLE:
         return None
+    mongo_uri = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017")
     try:
-        client = _MongoClient("mongodb://127.0.0.1:27017", serverSelectionTimeoutMS=300)
+        timeout_ms = 5000 if "mongodb+srv" in mongo_uri else 300
+        client = _MongoClient(mongo_uri, serverSelectionTimeoutMS=timeout_ms)
         client.admin.command('ping')
         return client["news_db"]
     except Exception:
