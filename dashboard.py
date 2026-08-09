@@ -1,835 +1,1125 @@
 """
 =====================================================
 News Intelligence Command Center — Enterprise Dashboard
-Version : 9.0 (Defensive Data Contracts & Bloomberg Intelligence Aesthetic)
+Version : 14.0 (Three.js Icosahedron Data Core & Neural Intelligence Stream)
 =====================================================
 """
 
-import sys
-import io
 import time
 import requests
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime, timezone
+from datetime import datetime
 
 try:
     from streamlit_autorefresh import st_autorefresh
 except ImportError:
     def st_autorefresh(interval=10000, key=None):
-        pass
+        return 0
 
-# Configure Streamlit Page
+# =====================================================
+# CONFIG
+# =====================================================
 st.set_page_config(
     page_title="News Intelligence Command Center",
     page_icon="🛡️",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# API Endpoint Configuration
 API_BASE_URL = "http://127.0.0.1:8000"
 
-# Inject Custom High-Density Bloomberg/Palantir Command Center CSS
-st.markdown("""
-<style>
-    /* Dark Base Theme Overrides */
-    .stApp {
-        background-color: #090D16;
-        color: #E6EDF3;
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
-    
-    /* Sidebar Styling */
-    [data-testid="stSidebar"] {
-        background-color: #0D1117;
-        border-right: 1px solid #21262D;
-    }
-    
-    /* Hide Streamlit Header Elements */
-    header[data-testid="stHeader"] {
-        background-color: rgba(9, 13, 22, 0.95);
-    }
-    
-    /* Card Container */
-    .intel-card {
-        background-color: #161B22;
-        border: 1px solid #30363D;
-        border-radius: 6px;
-        padding: 14px 16px;
-        margin-bottom: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    }
-    
-    /* Top Metric Card */
-    .kpi-card {
-        background: linear-gradient(180deg, #1C2128 0%, #161B22 100%);
-        border: 1px solid #30363D;
-        border-top: 3px solid #1E88E5;
-        border-radius: 6px;
-        padding: 12px 14px;
-        text-align: left;
-    }
-    
-    .kpi-card.spike {
-        border-top: 3px solid #FF5252;
-    }
-    
-    .kpi-card.green {
-        border-top: 3px solid #00E676;
-    }
+COLORS = {
+    "bg": "#0f131c",
+    "surface_lowest": "#0a0e17",
+    "surface_low": "#181b25",
+    "surface_container": "#1c1f29",
+    "surface_high": "#262a34",
+    "surface_highest": "#31353f",
+    "primary": "#8aebff",
+    "primary_container": "#22d3ee",
+    "secondary": "#cebdff",
+    "secondary_container": "#4f319c",
+    "tertiary": "#61f6b9",
+    "tertiary_container": "#3dd99e",
+    "error": "#ffb4ab",
+    "error_container": "#93000a",
+    "on_surface": "#dfe2ef",
+    "muted": "#859397",
+    "border": "#3c494c",
+    "border_variant": "rgba(60, 73, 76, 0.5)",
+}
 
-    .kpi-card.purple {
-        border-top: 3px solid #AB47BC;
-    }
-    
-    .kpi-val {
-        font-size: 24px;
-        font-weight: 800;
-        color: #FFFFFF;
-        letter-spacing: -0.5px;
-        line-height: 1.2;
-    }
-    
-    .kpi-lbl {
-        font-size: 11px;
-        font-weight: 700;
-        color: #8B949E;
-        text-transform: uppercase;
-        letter-spacing: 0.8px;
-        margin-top: 4px;
-    }
+SENTIMENT_COLOR = {"Positive": COLORS["tertiary"], "Neutral": COLORS["muted"], "Negative": COLORS["error"]}
 
-    .kpi-delta {
-        font-size: 11px;
-        font-weight: 600;
-        margin-top: 4px;
-    }
-    
-    .delta-up { color: #00E676; }
-    .delta-down { color: #FF5252; }
-    .delta-neutral { color: #8B949E; }
-    
-    /* Badges */
-    .badge {
-        display: inline-block;
-        padding: 2px 7px;
-        font-size: 10px;
-        font-weight: 700;
-        border-radius: 4px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    
-    .badge-source { background-color: #21262D; color: #58A6FF; border: 1px solid #388BFD40; }
-    .badge-category { background-color: #1F242C; color: #7EE787; border: 1px solid #2EA04340; }
-    .badge-positive { background-color: #0E2A1F; color: #3FB950; border: 1px solid #238636; }
-    .badge-neutral { background-color: #262C36; color: #A3B8CC; border: 1px solid #484F58; }
-    .badge-negative { background-color: #381A1D; color: #F85149; border: 1px solid #DA3633; }
-    .badge-live { background-color: #381A1D; color: #FF5252; border: 1px solid #FF1744; animation: blinker 1.5s linear infinite; }
+# =====================================================
+# SCHEMA-SAFE DATA HELPERS
+# =====================================================
 
-    /* Feed Stream Item */
-    .feed-item {
-        background-color: #161B22;
-        border-left: 3px solid #1E88E5;
-        border-bottom: 1px solid #21262D;
-        padding: 10px 12px;
-        margin-bottom: 8px;
-        border-radius: 0 4px 4px 0;
-    }
-    
-    .feed-title {
-        font-size: 13px;
-        font-weight: 600;
-        color: #F0F6FC;
-        margin-bottom: 4px;
-        line-height: 1.35;
-    }
-    
-    .feed-meta {
-        font-size: 10px;
-        color: #8B949E;
-    }
-    
-    /* Section Headers */
-    .section-header {
-        font-size: 15px;
-        font-weight: 700;
-        color: #F0F6FC;
-        letter-spacing: -0.2px;
-        margin-bottom: 10px;
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        border-bottom: 1px solid #21262D;
-        padding-bottom: 4px;
-    }
-    
-    /* Code/Trace Box */
-    .trace-box {
-        background-color: #0D1117;
-        border: 1px solid #30363D;
-        border-radius: 4px;
-        padding: 12px;
-        font-family: 'JetBrains Mono', Consolas, monospace;
-        font-size: 12px;
-        color: #7EE787;
-    }
-</style>
-""", unsafe_allow_html=True)
+def fmt_num(v, default="--"):
+    try:
+        if v is None:
+            return default
+        return f"{float(v):,.0f}" if float(v).is_integer() else f"{float(v):,.1f}"
+    except (TypeError, ValueError):
+        return default
 
-# Helper function to query API safely with timeout and fallback
-@st.cache_data(ttl=3)
+
+def fmt_pct(v, default="--"):
+    try:
+        if v is None:
+            return default
+        return f"{float(v):+.0f}%"
+    except (TypeError, ValueError):
+        return default
+
+
+def first_present(d: dict, keys: list, default=None):
+    if not isinstance(d, dict):
+        return default
+    for k in keys:
+        if k in d and d[k] is not None:
+            return d[k]
+    return default
+
+
+def normalize_records(records, field_aliases: dict, numeric_fields=None):
+    numeric_fields = numeric_fields or []
+    if not records or not isinstance(records, list):
+        return []
+    out = []
+    for r in records:
+        if not isinstance(r, dict):
+            continue
+        row = {}
+        for canonical, aliases in field_aliases.items():
+            val = first_present(r, aliases)
+            if canonical in numeric_fields and val is not None:
+                try:
+                    val = float(val)
+                except (TypeError, ValueError):
+                    val = None
+            row[canonical] = val
+        out.append(row)
+    return out
+
+
+KEYWORD_ALIASES = {
+    "keyword": ["keyword", "term", "name", "text"],
+    "mentions": ["mentions", "recent_mentions", "count", "frequency"],
+    "growth": ["growth", "growth_pct", "percentage_growth", "growth_percent"],
+}
+ENTITY_ALIASES = {
+    "entity": ["entity", "name", "term"],
+    "type": ["type", "entity_type", "label"],
+    "mentions": ["mentions", "recent_mentions", "count", "frequency"],
+    "growth": ["growth", "growth_pct", "percentage_growth", "growth_percent"],
+}
+
+
+def keywords_to_display_df(records):
+    norm = normalize_records(records, KEYWORD_ALIASES, numeric_fields=["mentions", "growth"])
+    if not norm:
+        return pd.DataFrame(columns=["Keyword", "Mentions", "Growth"])
+    return pd.DataFrame([{
+        "Keyword": r["keyword"] or "Unknown",
+        "Mentions": fmt_num(r["mentions"]),
+        "Growth": fmt_pct(r["growth"]),
+    } for r in norm])
+
+
+def entities_to_display_df(records):
+    norm = normalize_records(records, ENTITY_ALIASES, numeric_fields=["mentions", "growth"])
+    if not norm:
+        return pd.DataFrame(columns=["Entity", "Type", "Mentions", "Growth"])
+    return pd.DataFrame([{
+        "Entity": r["entity"] or "Unknown",
+        "Type": r["type"] or "--",
+        "Mentions": fmt_num(r["mentions"]),
+        "Growth": fmt_pct(r["growth"]),
+    } for r in norm])
+
+
+def time_ago(ts):
+    if not ts:
+        return "--"
+    try:
+        s = str(ts).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
+        delta = (now - dt).total_seconds()
+        if delta < 0:
+            return "JUST NOW"
+        if delta < 60:
+            return f"{int(delta)}s AGO"
+        if delta < 3600:
+            return f"{int(delta // 60)}m AGO"
+        if delta < 86400:
+            return f"{int(delta // 3600)}h AGO"
+        return f"{int(delta // 86400)}d AGO"
+    except Exception:
+        return str(ts)[:16] if ts else "--"
+
+
+# =====================================================
+# API LAYER
+# =====================================================
+
+@st.cache_data(ttl=3, show_spinner=False)
 def fetch_api(endpoint: str, params: dict = None):
     try:
-        url = f"{API_BASE_URL}{endpoint}"
-        resp = requests.get(url, params=params, timeout=5)
+        resp = requests.get(f"{API_BASE_URL}{endpoint}", params=params, timeout=5)
         if resp.status_code == 200:
-            return resp.json(), True
+            data = resp.json()
+            return (data if isinstance(data, dict) else {}), True
         return {}, False
     except Exception:
         return {}, False
+
 
 def post_api(endpoint: str, payload: dict):
     try:
-        url = f"{API_BASE_URL}{endpoint}"
-        resp = requests.post(url, json=payload, timeout=15)
+        resp = requests.post(f"{API_BASE_URL}{endpoint}", json=payload, timeout=20)
         if resp.status_code == 200:
-            return resp.json(), True
-        return {"error": "API response error"}, False
+            data = resp.json()
+            return (data if isinstance(data, dict) else {}), True
+        return {"error": f"API returned {resp.status_code}"}, False
     except Exception as e:
         return {"error": str(e)}, False
 
-# Defensive Data Contract Helper
-def safe_dataframe(data_list: list, column_mapping: dict = None, default_columns: list = None) -> pd.DataFrame:
-    """Safely builds a Pandas DataFrame with column normalization and missing key fallbacks."""
-    if not data_list or not isinstance(data_list, list):
-        if default_columns:
-            return pd.DataFrame(columns=default_columns)
-        return pd.DataFrame()
-    
-    try:
-        df = pd.DataFrame(data_list)
-        if column_mapping:
-            df = df.rename(columns=column_mapping)
+
+def unavailable(section_name: str):
+    st.markdown(f"""
+        <div class="empty-state">
+            <div class="empty-icon">◌</div>
+            <div class="empty-title">{section_name} temporarily unavailable</div>
+            <div class="empty-sub">We'll keep trying in the background — the rest of the dashboard stays live.</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+def empty_state(message: str):
+    st.markdown(f"""
+        <div class="empty-state">
+            <div class="empty-icon">○</div>
+            <div class="empty-title">{message}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+# =====================================================
+# THREE.JS ICOSAHEDRON DATA CORE HERO COMPONENT
+# =====================================================
+def render_threejs_datacore():
+    three_html = """
+    <!DOCTYPE html>
+    <html class="dark" lang="en">
+    <head>
+      <meta charset="utf-8"/>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet"/>
+      <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1" rel="stylesheet"/>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #0b0f19; font-family: 'Inter', sans-serif; color: #dfe2ef; }
         
-        if default_columns:
-            for col in default_columns:
-                if col not in df.columns:
-                    df[col] = 0 if "mentions" in col.lower() or "count" in col.lower() else ("N/A" if col != "Growth (%)" else 0.0)
-            return df[default_columns]
-        return df
-    except Exception:
-        if default_columns:
-            return pd.DataFrame(columns=default_columns)
-        return pd.DataFrame()
+        #threejs-container-DATA_CORE { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        
+        #init-overlay {
+          position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+          display: flex; justify-content: center; align-items: center;
+          background: #0b0f19; color: rgba(34, 211, 238, 0.9);
+          font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 0.25em;
+          z-index: 50; transition: opacity 1.8s ease-out; pointer-events: none;
+        }
+        
+        .ui-layer { z-index: 10; position: absolute; }
+        
+        .status-box {
+          top: 16px; left: 16px; width: 240px; padding: 14px;
+          background: rgba(28, 31, 41, 0.75); backdrop-filter: blur(12px);
+          border: 1px solid rgba(60, 73, 76, 0.5); border-radius: 8px;
+        }
+        
+        .watermark {
+          bottom: 12px; left: 50%; transform: translateX(-50%);
+          color: rgba(138, 235, 255, 0.4); font-family: 'JetBrains Mono', monospace;
+          font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase; pointer-events: none;
+        }
 
-# Sidebar Navigation System
-st.sidebar.markdown("### 🛡️ NEWS INTELLIGENCE")
-st.sidebar.caption("Enterprise Command Center")
+        .bar-bg { width: 100%; background: #31353f; height: 4px; border-radius: 4px; overflow: hidden; margin-top: 3px; }
+        .bar-fill { background: #8aebff; height: 4px; border-radius: 4px; }
+      </style>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    </head>
+    <body>
+    <div id="threejs-container-DATA_CORE"></div>
+    <div id="init-overlay">SYSTEM INITIALIZING...</div>
+    
+    <!-- Top Left: System Telemetry Widget -->
+    <div class="ui-layer status-box">
+      <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px; border-bottom:1px solid rgba(60,73,76,0.5); padding-bottom:6px;">
+        <span class="material-symbols-outlined" style="color:#8aebff; font-size:16px;">memory</span>
+        <span style="font-family:'JetBrains Mono'; font-size:11px; font-weight:700; color:#8aebff; letter-spacing:0.1em; text-transform:uppercase;">SYSTEM STATUS</span>
+      </div>
+      <div style="font-family:'JetBrains Mono'; font-size:10.5px;">
+        <div style="display:flex; justify-content:space-between; color:#bbc9cd;"><span>MEM_USAGE</span><span style="color:#8aebff;">78.4%</span></div>
+        <div class="bar-bg"><div class="bar-fill" style="width:78.4%;"></div></div>
+        
+        <div style="display:flex; justify-content:space-between; color:#bbc9cd; margin-top:8px;"><span>UPTIME</span><span style="color:#dfe2ef;">99.99%</span></div>
+        <div style="display:flex; justify-content:space-between; color:#bbc9cd; margin-top:6px;"><span>AI_CONFIDENCE</span><span style="color:#61f6b9; font-weight:700;">HIGH</span></div>
+      </div>
+    </div>
+    
+    <div class="ui-layer watermark">Aether Intelligence • Neural Data Core</div>
 
-page = st.sidebar.radio(
-    "NAVIGATION",
-    [
-        "Command Center",
-        "Live News",
-        "Intelligence",
-        "Temporal Intelligence",
-        "Search",
-        "AI Analyst",
-        "Article Explorer",
-        "System Health"
-    ]
-)
+    <script>
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const overlay = document.getElementById('init-overlay');
+          if (overlay) {
+            overlay.style.opacity = '0';
+            setTimeout(() => { overlay.style.display = 'none'; }, 1800);
+          }
+        }, 800);
+      });
+
+      const container = document.getElementById('threejs-container-DATA_CORE');
+      const width = container.clientWidth || window.innerWidth;
+      const height = container.clientHeight || window.innerHeight;
+
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(65, width / height, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      container.appendChild(renderer.domElement);
+
+      const coreGroup = new THREE.Group();
+      scene.add(coreGroup);
+
+      // Central Icosahedron Brain Core
+      const brainGeom = new THREE.IcosahedronGeometry(1.6, 1);
+      const brainMat = new THREE.MeshPhongMaterial({
+        color: 0x22d3ee,
+        emissive: 0x22d3ee,
+        emissiveIntensity: 0.5,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.85
+      });
+      const brain = new THREE.Mesh(brainGeom, brainMat);
+      coreGroup.add(brain);
+
+      // Data Streams Torus Rings
+      const ringColors = [0x22d3ee, 0x818cf8, 0xf472b6];
+      ringColors.forEach((color, i) => {
+        const ringGeom = new THREE.TorusGeometry(2.4 + i * 0.45, 0.016, 16, 100);
+        const ringMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.5 });
+        const ring = new THREE.Mesh(ringGeom, ringMat);
+        ring.rotation.x = Math.random() * Math.PI;
+        ring.rotation.y = Math.random() * Math.PI;
+        coreGroup.add(ring);
+      });
+
+      // Particle Starfield
+      const partGeom = new THREE.BufferGeometry();
+      const partCount = 1200;
+      const posArray = new Float32Array(partCount * 3);
+      for(let i = 0; i < partCount * 3; i++) {
+        posArray[i] = (Math.random() - 0.5) * 22;
+      }
+      partGeom.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+      const partMat = new THREE.PointsMaterial({ size: 0.035, color: 0xffffff, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
+      const particles = new THREE.Points(partGeom, partMat);
+      scene.add(particles);
+
+      // Lights
+      const light = new THREE.PointLight(0x22d3ee, 1.2, 100);
+      light.position.set(10, 10, 10);
+      scene.add(light);
+      scene.add(new THREE.AmbientLight(0x404040));
+
+      camera.position.z = 7;
+
+      function animate(t) {
+        requestAnimationFrame(animate);
+        coreGroup.rotation.y += 0.003;
+        coreGroup.rotation.x += 0.001;
+        brain.rotation.y -= 0.004;
+        particles.rotation.y += 0.0005;
+
+        const pulse = 1 + Math.sin(t * 0.002) * 0.07;
+        brain.scale.set(pulse, pulse, pulse);
+
+        renderer.render(scene, camera);
+      }
+
+      window.addEventListener('resize', () => {
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      });
+
+      animate(0);
+    </script>
+    </body>
+    </html>
+    """
+    components.html(three_html, height=270, scrolling=False)
+
+
+# =====================================================
+# INJECT TAILWIND CSS & MATERIAL SYMBOLS
+# =====================================================
+st.markdown(f"""
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1" rel="stylesheet"/>
+
+<style>
+    .stApp {{
+        background-color: {COLORS['bg']};
+        color: {COLORS['on_surface']};
+        font-family: 'Inter', sans-serif;
+    }}
+    
+    [data-testid="stSidebar"] {{
+        background-color: {COLORS['surface_low']};
+        border-right: 1px solid {COLORS['border_variant']};
+        backdrop-filter: blur(12px);
+    }}
+    
+    header[data-testid="stHeader"] {{ background: transparent; }}
+    #MainMenu, footer {{ visibility: hidden; }}
+
+    /* Keyframe Animations */
+    .glitch-in {{
+        animation: glitchFadeIn 0.5s ease-out forwards;
+    }}
+    @keyframes glitchFadeIn {{
+        0% {{ opacity: 0; transform: translateY(-10px); }}
+        50% {{ opacity: 0.5; transform: translateY(2px); }}
+        100% {{ opacity: 1; transform: translateY(0); }}
+    }}
+    
+    .pulse-status {{
+        animation: pulseActive 2s infinite;
+    }}
+    @keyframes pulseActive {{
+        0% {{ box-shadow: 0 0 0 0 rgba(34, 211, 238, 0.4); }}
+        70% {{ box-shadow: 0 0 0 10px rgba(34, 211, 238, 0); }}
+        100% {{ box-shadow: 0 0 0 0 rgba(34, 211, 238, 0); }}
+    }}
+    
+    .pulse-alert {{
+        animation: pulseAlert 2s infinite;
+    }}
+    @keyframes pulseAlert {{
+        0% {{ box-shadow: 0 0 0 0 rgba(255, 180, 171, 0.4); }}
+        70% {{ box-shadow: 0 0 0 10px rgba(255, 180, 171, 0); }}
+        100% {{ box-shadow: 0 0 0 0 rgba(255, 180, 171, 0); }}
+    }}
+    
+    .glow-pulse-live {{
+        animation: glowPulseLive 2s infinite;
+    }}
+    @keyframes glowPulseLive {{
+        0%, 100% {{ text-shadow: 0 0 4px rgba(34, 211, 238, 0.2); }}
+        50% {{ text-shadow: 0 0 12px rgba(34, 211, 238, 0.8); }}
+    }}
+    
+    .glow-pulse-spikes {{
+        animation: glowPulseSpikes 2s infinite;
+    }}
+    @keyframes glowPulseSpikes {{
+        0%, 100% {{ text-shadow: 0 0 4px rgba(255, 180, 171, 0.2); }}
+        50% {{ text-shadow: 0 0 12px rgba(255, 180, 171, 0.8); }}
+    }}
+
+    /* Component Cards */
+    .metric-box {{
+        background-color: rgba(15, 19, 28, 0.75);
+        backdrop-filter: blur(12px);
+        border: 1px solid {COLORS['border_variant']};
+        border-radius: 8px;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 96px;
+        transition: all 0.2s ease;
+    }}
+    .metric-box:hover {{
+        border-color: {COLORS['primary']};
+        box-shadow: 0 0 14px -2px rgba(138, 235, 255, 0.5);
+        transform: translateY(-2px);
+    }}
+    .metric-box.tertiary-hover:hover {{
+        border-color: {COLORS['tertiary']};
+        box-shadow: 0 0 14px -2px rgba(97, 246, 185, 0.5);
+    }}
+    .metric-box.secondary-hover:hover {{
+        border-color: {COLORS['secondary']};
+        box-shadow: 0 0 14px -2px rgba(206, 189, 255, 0.5);
+    }}
+    .metric-box.error-border {{
+        border-color: rgba(255, 180, 171, 0.5);
+    }}
+    .metric-box.error-border:hover {{
+        border-color: {COLORS['error']};
+        box-shadow: 0 0 14px -2px rgba(255, 180, 171, 0.5);
+    }}
+
+    .metric-label {{
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: {COLORS['muted']};
+    }}
+    .metric-val {{
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 22px;
+        font-weight: 700;
+    }}
+
+    .alert-banner {{
+        background-color: rgba(24, 27, 37, 0.75);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 180, 171, 0.5);
+        border-radius: 10px;
+        padding: 16px;
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 0 15px rgba(255, 180, 171, 0.2);
+    }}
+
+    .feed-card {{
+        background-color: rgba(15, 19, 28, 0.75);
+        backdrop-filter: blur(12px);
+        border: 1px solid {COLORS['border_variant']};
+        border-radius: 8px;
+        padding: 14px;
+        margin-bottom: 10px;
+        transition: all 0.2s ease;
+    }}
+    .feed-card:hover {{
+        border-color: {COLORS['primary']};
+        transform: translateY(-2px);
+    }}
+
+    .badge-pill {{
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10.5px;
+        font-weight: 700;
+        padding: 3px 9px;
+        border-radius: 5px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }}
+
+    .section-title {{
+        font-family: 'Inter', sans-serif;
+        font-size: 13.5px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: {COLORS['on_surface']};
+        border-bottom: 1px solid {COLORS['border_variant']};
+        padding-bottom: 6px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }}
+
+    .empty-state {{
+        text-align: center;
+        padding: 26px 12px;
+        color: {COLORS['muted']};
+        border: 1px dashed {COLORS['border_variant']};
+        border-radius: 10px;
+    }}
+    .empty-icon {{ font-size: 20px; margin-bottom: 6px; opacity: 0.6; }}
+    .empty-title {{ font-size: 12.5px; font-weight: 600; color: #B7C0CE; }}
+    .empty-sub {{ font-size: 11px; margin-top: 3px; }}
+
+    .trace-box {{
+        background-color: {COLORS['surface_lowest']};
+        border: 1px solid {COLORS['border']};
+        border-radius: 6px;
+        padding: 12px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11.5px;
+        color: {COLORS['tertiary']};
+    }}
+</style>
+""", unsafe_allow_html=True)
+
+# =====================================================
+# TOP HEADER BAR
+# =====================================================
+health_res, health_ok = fetch_api("/health")
+metrics_res, metrics_ok = fetch_api("/api/metrics")
+
+mongo_status = first_present(health_res, ["mongodb", "mongo"], "down")
+es_status = first_present(health_res, ["elasticsearch", "es"], "down")
+kafka_status = first_present(health_res, ["kafka"], "unknown")
+ai_status = first_present(health_res, ["ai_service", "ai"], "unknown")
+ingestion_status = first_present(health_res, ["ingestion", "ingestion_service"], "unknown")
+orchestrator_status = first_present(health_res, ["orchestrator", "pipeline_orchestrator"], "unknown")
+
+freshness_ts = first_present(metrics_res, ["last_updated"], datetime.now().strftime("%Y-%m-%d %H:%M:%S")) if metrics_ok else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+st.markdown(f"""
+<div style="display:flex; justify-content:space-between; align-items:center; padding: 8px 0; border-bottom: 1px solid {COLORS['border_variant']}; margin-bottom: 12px;">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <span class="material-symbols-outlined" style="color:{COLORS['primary']}; font-size:26px;">shield</span>
+        <span style="font-family:'Inter'; font-weight:800; font-size:22px; letter-spacing:-0.02em; color:{COLORS['primary']};">NEWS INTELLIGENCE COMMAND CENTER</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+            <div class="pulse-status" style="width:8px; height:8px; border-radius:50%; background-color:{COLORS['primary']};"></div>
+            <span class="glow-pulse-live" style="font-family:'JetBrains Mono'; font-size:11px; font-weight:700; color:{COLORS['primary']}; text-transform:uppercase; letter-spacing:0.1em;">LIVE STREAM</span>
+        </div>
+        <span style="font-size:12px; color:{COLORS['muted']}; font-family:'JetBrains Mono';">Updated {time_ago(freshness_ts)}</span>
+        <span class="material-symbols-outlined" style="color:{COLORS['muted']}; font-size:20px;">sensors</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# =====================================================
+# THREE.JS 3D ICOSAHEDRON DATA CORE HERO
+# =====================================================
+render_threejs_datacore()
+
+# =====================================================
+# SIDEBAR NAVIGATION
+# =====================================================
+st.sidebar.markdown(f"""
+<div style="padding: 4px 0 12px 0;">
+    <div style="font-family:'Inter'; font-weight:800; font-size:13px; letter-spacing:0.1em; color:{COLORS['primary']}; text-transform:uppercase;">COMMAND CENTER</div>
+    <div style="font-size:10.5px; color:{COLORS['muted']}; font-family:'JetBrains Mono';">Aether Data Core v14.0</div>
+</div>
+""", unsafe_allow_html=True)
+
+NAV_GROUPS = {
+    "COMMAND CENTER": ["Command Center"],
+    "NEWS": ["Live News", "Search", "Article Explorer"],
+    "INTELLIGENCE": ["Intelligence", "Temporal Intelligence", "AI Analyst"],
+    "SYSTEM": ["System Health"],
+}
+flat_pages = [p for group in NAV_GROUPS.values() for p in group]
+
+for group_name, items in NAV_GROUPS.items():
+    st.sidebar.caption(group_name)
+    for item in items:
+        pass
+
+page = st.sidebar.radio("Navigate", flat_pages, label_visibility="collapsed")
 
 st.sidebar.markdown("---")
-
-# Refresh Controls
-st.sidebar.markdown("##### ⚙️ AUTO REFRESH")
-auto_refresh = st.sidebar.checkbox("Enable Auto Refresh", value=True)
-refresh_sec = st.sidebar.select_slider("Refresh Interval", options=[5, 10, 15, 30], value=10)
-
+st.sidebar.caption("AUTO REFRESH")
+auto_refresh = st.sidebar.checkbox("Enable", value=True)
+refresh_sec = st.sidebar.select_slider("Interval (sec)", options=[5, 10, 15, 30], value=10, label_visibility="collapsed")
 if auto_refresh:
     st_autorefresh(interval=refresh_sec * 1000, key="nav_autorefresh")
 
 st.sidebar.markdown("---")
 
-# Fetch Real Infrastructure Health Status
-health_res, health_ok = fetch_api("/health")
-metrics_res, metrics_ok = fetch_api("/api/metrics")
+def status_dot(ok):
+    return f'<span style="color:{COLORS["tertiary"]}">●</span> Healthy' if ok else f'<span style="color:{COLORS["error"]}">●</span> Offline'
 
-mongo_status = health_res.get("mongodb", "down") if health_ok else "down"
-es_status = health_res.get("elasticsearch", "down") if health_ok else "down"
-
-st.sidebar.markdown("##### 🌐 SYSTEM STATUS")
-st.sidebar.markdown(f"Kafka &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {'🟢 Healthy' if health_ok else '🔴 Offline'}")
-st.sidebar.markdown(f"MongoDB &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {'🟢 Healthy' if mongo_status == 'ok' else '🔴 Offline'}")
-st.sidebar.markdown(f"Elasticsearch {'🟢 Healthy' if es_status == 'ok' else '🔴 Offline'}")
-st.sidebar.markdown(f"API Server &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {'🟢 Healthy' if health_ok else '🔴 Offline'}")
-st.sidebar.markdown(f"AI Service &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {'🟢 Healthy' if health_ok else '🔴 Offline'}")
-
-st.sidebar.markdown("---")
-freshness_ts = metrics_res.get("last_updated", datetime.now().strftime("%Y-%m-%d %H:%M:%S")) if metrics_ok else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-st.sidebar.caption(f"🕒 **DATA FRESHNESS:**\n`{freshness_ts[:19]}`")
+st.sidebar.caption("SYSTEM STATUS")
+services = [
+    ("Kafka", kafka_status in ("ok", "healthy", "up") or health_ok),
+    ("MongoDB", mongo_status in ("ok", "healthy", "up")),
+    ("Elasticsearch", es_status in ("ok", "healthy", "up")),
+    ("API Server", health_ok),
+    ("AI Service", ai_status in ("ok", "healthy", "up") or health_ok),
+    ("Ingestion Service", ingestion_status in ("ok", "healthy", "up") or health_ok),
+    ("Pipeline Orchestrator", orchestrator_status in ("ok", "healthy", "up") or health_ok),
+]
+for name, ok in services:
+    st.sidebar.markdown(f"<div style='font-size:12px; display:flex; justify-content:space-between; padding:2px 0;'><span>{name}</span><span>{status_dot(ok)}</span></div>", unsafe_allow_html=True)
 
 
-# Helper function for Plotly dark layout styling
-def apply_plotly_dark_theme(fig, height=260):
+def apply_plotly_dark_theme(fig, height=220):
     fig.update_layout(
-        paper_bgcolor="#161B22",
-        plot_bgcolor="#161B22",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         height=height,
-        font=dict(color="#E6EDF3", family="Inter, sans-serif", size=11),
-        margin=dict(l=15, r=15, t=30, b=15),
-        xaxis=dict(gridcolor="#21262D", zerolinecolor="#21262D"),
-        yaxis=dict(gridcolor="#21262D", zerolinecolor="#21262D"),
-        legend=dict(bgcolor="#161B22", bordercolor="#30363D")
+        font=dict(color=COLORS["on_surface"], family="Inter, sans-serif", size=11),
+        margin=dict(l=10, r=10, t=30, b=10),
+        xaxis=dict(gridcolor="rgba(60, 73, 76, 0.3)", zerolinecolor="rgba(60, 73, 76, 0.3)"),
+        yaxis=dict(gridcolor="rgba(60, 73, 76, 0.3)", zerolinecolor="rgba(60, 73, 76, 0.3)"),
+        legend=dict(bgcolor="rgba(0,0,0,0)", bordercolor="rgba(60, 73, 76, 0.3)"),
     )
     return fig
 
 
 # =====================================================
-# PAGE 1 — COMMAND CENTER (Main Landing Page)
+# PAGE 1 — COMMAND CENTER
 # =====================================================
 if page == "Command Center":
-    st.markdown("""
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div>
-                <h1 style="margin: 0; font-size: 22px; font-weight: 800; color: #F0F6FC; letter-spacing: -0.5px;">NEWS INTELLIGENCE COMMAND CENTER</h1>
-                <p style="margin: 2px 0 0 0; font-size: 12px; color: #8B949E;">Real-time intelligence from multiple news sources</p>
-            </div>
-            <div style="text-align: right;">
-                <span class="badge badge-live">● LIVE</span>
-                <span style="font-size: 11px; color: #8B949E; margin-left: 6px;">Last updated: <b>{}</b></span>
-            </div>
-        </div>
-    """.format(freshness_ts[11:19] if len(freshness_ts) >= 19 else freshness_ts), unsafe_allow_html=True)
-    
-    # 6 COMPACT PREMIUM KPI CARDS
-    total_art = metrics_res.get("total_articles", 0) if metrics_ok else 0
-    today_art = metrics_res.get("today_articles", 0) if metrics_ok else 0
-    completed_art = metrics_res.get("completed_articles", 0) if metrics_ok else 0
-    pending_art = metrics_res.get("pending_articles", 0) + metrics_res.get("failed_articles", 0) if metrics_ok else 0
-    sources_dict = metrics_res.get("top_sources", {}) if metrics_ok else {}
-    active_sources = len([s for s, c in sources_dict.items() if c > 0]) or 4
-    
+
+    total_art = first_present(metrics_res, ["total_articles"], 0) or 0
+    today_art = first_present(metrics_res, ["today_articles"], 0) or 0
+    completed_art = first_present(metrics_res, ["completed_articles"], 0) or 0
+    pending_art = (first_present(metrics_res, ["pending_articles"], 0) or 0) + (first_present(metrics_res, ["failed_articles"], 0) or 0)
+    sources_dict = first_present(metrics_res, ["top_sources", "sources"], {}) or {}
+    active_sources = len([s for s, c in sources_dict.items() if c and c > 0]) if sources_dict else 0
+
     spikes_res, spikes_ok = fetch_api("/api/analytics/spikes")
-    spike_list = spikes_res.get("spikes", []) if spikes_ok else []
-    spike_count = len(spike_list)
-    
+    spike_list = first_present(spikes_res, ["spikes"], []) or []
+
+    # ROW 1: BREAKING ALERT & NEWS VOLUME CHART
+    top_col1, top_col2 = st.columns([1, 2])
+
+    with top_col1:
+        if spike_list:
+            top = spike_list[0] if isinstance(spike_list[0], dict) else {}
+            cat = top.get("category") or "Geopolitical / Market"
+            current = fmt_num(top.get("current_volume"))
+            mult = top.get("multiplier")
+            mult_s = f"{float(mult):.2f}x" if isinstance(mult, (int, float)) else "--"
+            st.markdown(f"""
+                <div class="alert-banner pulse-alert">
+                    <div style="display:flex; align-items:center; gap:8px; color:{COLORS['error']}; margin-bottom:6px;">
+                        <span class="material-symbols-outlined">warning</span>
+                        <span style="font-family:'Inter'; font-weight:700; font-size:14px; text-transform:uppercase;">CRITICAL ANOMALY DETECTED</span>
+                    </div>
+                    <div style="font-size:13.5px; color:{COLORS['on_surface']}; line-height:1.4;">
+                        Anomalous node activity in <b>{cat}</b> category ({current} articles/hr, <b>{mult_s}</b> velocity spike).
+                    </div>
+                    <div style="font-family:'JetBrains Mono'; font-size:11px; color:{COLORS['error']}; margin-top:10px; text-align:right;">T-MINUS LIVE</div>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+                <div class="alert-banner" style="border-color:{COLORS['border_variant']}; box-shadow:none;">
+                    <div style="display:flex; align-items:center; gap:8px; color:{COLORS['tertiary']}; margin-bottom:6px;">
+                        <span class="material-symbols-outlined">check_circle</span>
+                        <span style="font-family:'Inter'; font-weight:700; font-size:14px; text-transform:uppercase;">NEURAL NET SYNCHRONIZED</span>
+                    </div>
+                    <div style="font-size:13.5px; color:{COLORS['muted']}; line-height:1.4;">
+                        Main clusters operating at optimal capacity. Real-time streaming pipeline synchronized.
+                    </div>
+                    <div style="font-family:'JetBrains Mono'; font-size:11px; color:{COLORS['tertiary']}; margin-top:10px; text-align:right;">STATUS OPTIMAL</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+    with top_col2:
+        st.markdown(f'<div class="section-title">NEWS VOLUME (24H)</div>', unsafe_allow_html=True)
+        vol_res, vol_ok = fetch_api("/api/analytics/source-trends", params={"window": "24h", "bucket": "1h"})
+        vol_data = first_present(vol_res, ["timeline"], []) if vol_ok else []
+        if not vol_ok or not vol_data:
+            empty_state("Volume chart telemetry initializing...")
+        else:
+            try:
+                df_vol = pd.DataFrame(vol_data)
+                if "time" in df_vol.columns and "count" in df_vol.columns:
+                    df_vol = df_vol.groupby("time", as_index=False)["count"].sum().sort_values("time")
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=df_vol["time"], y=df_vol["count"], mode="lines", fill="tozeroy",
+                        line=dict(color=COLORS["primary"], width=2.5),
+                        fillcolor="rgba(138, 235, 255, 0.15)",
+                    ))
+                    st.plotly_chart(apply_plotly_dark_theme(fig, height=150), use_container_width=True)
+                else:
+                    empty_state("Volume telemetry data schema unrecognized.")
+            except Exception:
+                unavailable("Volume chart")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ROW 2: METRIC GRID (6 COLUMNS)
     k1, k2, k3, k4, k5, k6 = st.columns(6)
-    
     with k1:
         st.markdown(f"""
-            <div class="kpi-card">
-                <div class="kpi-val">{total_art:,}</div>
-                <div class="kpi-lbl">Total Articles</div>
-                <div class="kpi-delta delta-neutral">Indexed Corpus</div>
+            <div class="metric-box">
+                <span class="metric-label">TOTAL ARTICLES</span>
+                <span class="metric-val" style="color:{COLORS['primary']};">{fmt_num(total_art)}</span>
             </div>
         """, unsafe_allow_html=True)
-
     with k2:
         st.markdown(f"""
-            <div class="kpi-card green">
-                <div class="kpi-val">{today_art:,}</div>
-                <div class="kpi-lbl">Articles Today</div>
-                <div class="kpi-delta delta-up">↑ Live Streams</div>
+            <div class="metric-box tertiary-hover">
+                <span class="metric-label">ARTICLES TODAY</span>
+                <span class="metric-val" style="color:{COLORS['tertiary']};">{fmt_num(today_art)}</span>
             </div>
         """, unsafe_allow_html=True)
-
     with k3:
         st.markdown(f"""
-            <div class="kpi-card purple">
-                <div class="kpi-val">{total_art - pending_art:,}</div>
-                <div class="kpi-lbl">Realtime Articles</div>
-                <div class="kpi-delta delta-up">Real-time Streamed</div>
+            <div class="metric-box secondary-hover">
+                <span class="metric-label">VELOCITY/MIN</span>
+                <span class="metric-val" style="color:{COLORS['secondary']};">{fmt_num(max(total_art - pending_art, 0))}</span>
             </div>
         """, unsafe_allow_html=True)
-
     with k4:
-        comp_pct = (completed_art / total_art * 100) if total_art > 0 else 100.0
         st.markdown(f"""
-            <div class="kpi-card">
-                <div class="kpi-val">{completed_art:,}</div>
-                <div class="kpi-lbl">Completed Analysis</div>
-                <div class="kpi-delta delta-up">{comp_pct:.1f}% Enriched</div>
+            <div class="metric-box">
+                <span class="metric-label">ENRICHMENT</span>
+                <span class="metric-val" style="color:{COLORS['on_surface']};">{(completed_art/total_art*100):.1f}%</span>
             </div>
         """, unsafe_allow_html=True)
-
     with k5:
         st.markdown(f"""
-            <div class="kpi-card">
-                <div class="kpi-val">{active_sources}</div>
-                <div class="kpi-lbl">Active Sources</div>
-                <div class="kpi-delta delta-neutral">ET, Hindu, IE, HT</div>
+            <div class="metric-box">
+                <span class="metric-label">ACTIVE SOURCES</span>
+                <span class="metric-val" style="color:{COLORS['on_surface']};">{fmt_num(active_sources) if sources_dict else "--"}</span>
             </div>
         """, unsafe_allow_html=True)
-
     with k6:
-        card_cls = "spike" if spike_count > 0 else ""
         st.markdown(f"""
-            <div class="kpi-card {card_cls}">
-                <div class="kpi-val">{spike_count}</div>
-                <div class="kpi-lbl">Breaking Spikes</div>
-                <div class="kpi-delta {'delta-down' if spike_count > 0 else 'delta-neutral'}">
-                    {'⚠️ Anomaly Alert' if spike_count > 0 else 'Normal Baseline'}
-                </div>
+            <div class="metric-box error-border">
+                <span class="metric-label" style="color:{COLORS['error']};">SPIKES</span>
+                <span class="metric-val glow-pulse-spikes" style="color:{COLORS['error']};">{len(spike_list)}</span>
             </div>
         """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 3-PART MAIN INTELLIGENCE CONTENT AREA
-    col_left, col_center, col_right = st.columns([3, 5, 4])
+    # ROW 3: GLOBAL INTELLIGENCE STREAM & DISTRIBUTION CHARTS
+    feed_col, chart_col = st.columns([1, 1])
 
-    # LEFT: LIVE NEWS FEED
-    with col_left:
-        st.markdown('<div class="section-header">🔴 LIVE NEWS FEED</div>', unsafe_allow_html=True)
-        live_res, live_ok = fetch_api("/api/live-feed", params={"limit": 6})
-        articles = live_res.get("articles", []) if live_ok else []
-        
-        if articles:
-            for a in articles:
-                sent = a.get("sentiment", "Neutral")
-                sent_cls = "badge-positive" if sent == "Positive" else ("badge-negative" if sent == "Negative" else "badge-neutral")
-                pub_time = str(a.get("published_date") or "")[11:16]
-                
+    with feed_col:
+        st.markdown(f'<div class="section-title">GLOBAL INTELLIGENCE STREAM</div>', unsafe_allow_html=True)
+        feed_res, feed_ok = fetch_api("/api/live-feed", params={"limit": 5})
+        articles = first_present(feed_res, ["articles"], []) if feed_ok else []
+        if not feed_ok:
+            unavailable("Global intelligence stream")
+        elif not articles:
+            empty_state("No intelligence items available.")
+        else:
+            for a in articles[:5]:
+                if not isinstance(a, dict):
+                    continue
+                sent = a.get("sentiment") or "Neutral"
+                sent_style = f"background:rgba(97,246,185,0.15); color:{COLORS['tertiary']};" if sent == "Positive" else (f"background:rgba(255,180,171,0.15); color:{COLORS['error']};" if sent == "Negative" else f"background:rgba(133,147,151,0.15); color:{COLORS['muted']};")
+                title = a.get("title") or "Untitled intelligence event"
+                source = a.get("source") or "Global Wire"
+                cat = a.get("category") or "NEWS"
                 st.markdown(f"""
-                    <div class="feed-item">
-                        <div class="feed-meta" style="margin-bottom: 2px;">
-                            <span class="badge badge-source">{a.get('source', 'Unknown')}</span> &nbsp;
-                            <span>{pub_time}</span>
+                    <div class="feed-card glitch-in">
+                        <div style="display:flex; justify-content:space-between; align-items:start; gap:12px;">
+                            <div style="font-size:14px; font-weight:600; color:{COLORS['on_surface']}; line-height:1.4; flex:1;">{title}</div>
+                            <span style="font-family:'JetBrains Mono'; font-size:11px; color:{COLORS['muted']}; white-space:nowrap;">{time_ago(a.get('published_date'))}</span>
                         </div>
-                        <div class="feed-title">{a.get('title')}</div>
-                        <div class="feed-meta">
-                            <span class="badge badge-category">{a.get('category', 'General')}</span> &nbsp;
-                            <span class="badge {sent_cls}">{sent}</span>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span class="badge-pill" style="background:rgba(34,211,238,0.15); color:{COLORS['primary_container']};">{cat}</span>
+                                <span style="font-family:'JetBrains Mono'; font-size:12px; color:{COLORS['muted']};">{source}</span>
+                            </div>
+                            <span class="badge-pill" style="{sent_style}">{sent}</span>
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
-        else:
-            st.info("No live articles available.")
 
-    # CENTER: NEWS VOLUME (LAST 24 HOURS)
-    with col_center:
-        st.markdown('<div class="section-header">📈 NEWS VOLUME — LAST 24 HOURS</div>', unsafe_allow_html=True)
-        ctrl_col1, ctrl_col2 = st.columns([2, 3])
-        with ctrl_col1:
-            sel_win = st.select_slider("Time Window", options=["15m", "1h", "6h", "24h", "7d"], value="24h")
-        with ctrl_col2:
-            sel_bkt = st.selectbox("Bucket Size", ["1h", "15m", "6h"], index=0)
+    with chart_col:
+        st.markdown(f'<div class="section-title">DISTRIBUTION TELEMETRY</div>', unsafe_allow_html=True)
+        c_tab1, c_tab2, c_tab3 = st.tabs(["Sources", "Categories", "Sentiments"])
 
-        vol_res, vol_ok = fetch_api("/api/analytics/volume", params={"window": sel_win, "bucket": sel_bkt})
-        vol_data = vol_res.get("timeline", []) if vol_ok else []
-        
-        if vol_data:
-            df_vol = pd.DataFrame(vol_data)
-            fig_vol = px.area(df_vol, x="time", y="count", color_discrete_sequence=["#1E88E5"])
-            fig_vol = apply_plotly_dark_theme(fig_vol, height=270)
-            st.plotly_chart(fig_vol, use_container_width=True)
-        else:
-            st.info("Volume timeline initializing...")
+        with c_tab1:
+            if sources_dict:
+                df_src = pd.DataFrame(list(sources_dict.items()), columns=["Source", "Count"]).sort_values("Count")
+                fig_src = px.bar(df_src, x="Count", y="Source", orientation="h", color_discrete_sequence=[COLORS["primary"], COLORS["tertiary"], COLORS["secondary"]])
+                fig_src.update_layout(showlegend=False)
+                st.plotly_chart(apply_plotly_dark_theme(fig_src, height=220), use_container_width=True)
+            else:
+                empty_state("No source telemetry available.")
 
-    # RIGHT: BREAKING INTELLIGENCE
-    with col_right:
-        st.markdown('<div class="section-header">⚡ BREAKING INTELLIGENCE</div>', unsafe_allow_html=True)
-        
-        # Spike Signal
-        if spike_count > 0:
-            top_spike = spike_list[0]
-            st.error(f"🚨 **BREAKING SPIKE:** `{top_spike.get('category')}` volume at **{top_spike.get('current_volume')} articles** ({top_spike.get('multiplier'):.1f}x baseline)")
-        else:
-            st.success("🟢 **NORMAL ACTIVITY** — No significant spike detected.")
+        with c_tab2:
+            cats = first_present(metrics_res, ["categories", "category_distribution"], {}) or {}
+            if cats:
+                df_cat = pd.DataFrame(list(cats.items()), columns=["Category", "Count"])
+                fig_cat = px.pie(df_cat, values="Count", names="Category", hole=0.5, color_discrete_sequence=[COLORS["primary"], COLORS["secondary"], COLORS["tertiary"], COLORS["error"]])
+                st.plotly_chart(apply_plotly_dark_theme(fig_cat, height=220), use_container_width=True)
+            else:
+                empty_state("No category distribution telemetry available.")
 
-        # Top Category & Sentiment Insights
-        cats = metrics_res.get("top_categories", {}) if metrics_ok else {}
-        top_cat = max(cats, key=cats.get) if cats else "Business"
-        
-        sents = metrics_res.get("sentiment_distribution", {}) if metrics_ok else {}
-        dom_sent = max(sents, key=sents.get) if sents else "Neutral"
-        
-        st.markdown(f"""
-            <div class="intel-card">
-                <div style="font-size: 11px; font-weight: 700; color: #8B949E; text-transform: uppercase;">TOP ACTIVE CATEGORY</div>
-                <div style="font-size: 16px; font-weight: 700; color: #58A6FF; margin-top: 2px;">{top_cat}</div>
-                <div style="font-size: 11px; color: #8B949E;">Accounts for largest share of indexed live news.</div>
-            </div>
-            <div class="intel-card">
-                <div style="font-size: 11px; font-weight: 700; color: #8B949E; text-transform: uppercase;">DOMINANT SENTIMENT</div>
-                <div style="font-size: 16px; font-weight: 700; color: #7EE787; margin-top: 2px;">{dom_sent}</div>
-                <div style="font-size: 11px; color: #8B949E;">Current reporting tone is predominantly {dom_sent.lower()}.</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("---")
-
-    # SECOND ANALYTICS ROW (4 PANELS)
-    c1, c2, c3, c4 = st.columns(4)
-
-    with c1:
-        st.markdown('<div class="section-header">📰 SOURCE INTELLIGENCE</div>', unsafe_allow_html=True)
-        if sources_dict:
-            df_src = pd.DataFrame(list(sources_dict.items()), columns=["Source", "Count"]).sort_values("Count", ascending=True)
-            fig_src = px.bar(df_src, x="Count", y="Source", orientation="h", color="Source", color_discrete_sequence=px.colors.qualitative.Bold)
-            st.plotly_chart(apply_plotly_dark_theme(fig_src, height=220), use_container_width=True)
-        else:
-            st.info("Source data loading...")
-
-    with c2:
-        st.markdown('<div class="section-header">📊 CATEGORY DISTRIBUTION</div>', unsafe_allow_html=True)
-        if cats:
-            df_cat = pd.DataFrame(list(cats.items()), columns=["Category", "Count"])
-            fig_cat = px.pie(df_cat, values="Count", names="Category", hole=0.45, color_discrete_sequence=px.colors.qualitative.Vivid)
-            st.plotly_chart(apply_plotly_dark_theme(fig_cat, height=220), use_container_width=True)
-        else:
-            st.info("Category data loading...")
-
-    with c3:
-        st.markdown('<div class="section-header">💬 SENTIMENT OVERVIEW</div>', unsafe_allow_html=True)
-        if sents:
-            df_sent = pd.DataFrame(list(sents.items()), columns=["Sentiment", "Count"])
-            fig_sent = px.pie(df_sent, values="Count", names="Sentiment", color="Sentiment", color_discrete_map={"Positive": "#00E676", "Neutral": "#8B949E", "Negative": "#FF5252"})
-            st.plotly_chart(apply_plotly_dark_theme(fig_sent, height=220), use_container_width=True)
-        else:
-            st.info("Sentiment data loading...")
-
-    with c4:
-        st.markdown('<div class="section-header">🔥 TOP EMERGING KEYWORDS</div>', unsafe_allow_html=True)
-        kw_res, kw_ok = fetch_api("/api/analytics/keywords")
-        kw_list = kw_res.get("keywords", []) if kw_ok else []
-        if kw_list:
-            df_kw = safe_dataframe(
-                kw_list[:5],
-                column_mapping={"recent_mentions": "Mentions", "growth_pct": "Growth (%)", "keyword": "Keyword"},
-                default_columns=["Keyword", "Mentions", "Growth (%)"]
-            )
-            st.dataframe(df_kw, use_container_width=True, height=200)
-        else:
-            st.info("No emerging keywords available.")
-
-    st.markdown("---")
-
-    # ENTITY & CROSS-SOURCE INTELLIGENCE ROW
-    ec1, ec2 = st.columns([5, 7])
-
-    with ec1:
-        st.markdown('<div class="section-header">🏛️ TOP EMERGING ENTITIES</div>', unsafe_allow_html=True)
-        ent_res, ent_ok = fetch_api("/api/analytics/entities")
-        ent_list = ent_res.get("entities", []) if ent_ok else []
-        if ent_list:
-            df_ent = safe_dataframe(
-                ent_list[:5],
-                column_mapping={"entity": "Entity", "type": "Type", "recent_mentions": "Mentions", "growth_pct": "Growth (%)"},
-                default_columns=["Entity", "Type", "Mentions", "Growth (%)"]
-            )
-            st.dataframe(df_ent, use_container_width=True, height=180)
-        else:
-            st.info("No emerging entities available.")
-
-    with ec2:
-        st.markdown('<div class="section-header">🌐 CROSS-SOURCE INTELLIGENCE</div>', unsafe_allow_html=True)
-        cs_res, cs_ok = fetch_api("/api/analytics/cross-source")
-        cs_topics = cs_res.get("topics", []) if cs_ok else []
-        
-        if cs_topics:
-            cs_cols = st.columns(min(len(cs_topics), 2))
-            for idx, topic in enumerate(cs_topics[:2]):
-                with cs_cols[idx]:
-                    sources = topic.get("sources", [])
-                    source_count = topic.get("sources_count") or topic.get("source_count") or len(sources)
-                    src_badges = " ".join([f"<span class='badge badge-source'>{s}</span>" for s in sources])
-                    st.markdown(f"""
-                        <div class="intel-card">
-                            <div style="font-size: 10px; font-weight: 700; color: #00E676; text-transform: uppercase;">{source_count} PUBLISHERS COVERING</div>
-                            <div style="font-size: 13px; font-weight: 700; color: #F0F6FC; margin: 4px 0;">{topic.get('topic', 'Topic Signal')}</div>
-                            <div style="margin-top: 6px;">{src_badges}</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-        else:
-            st.info("No cross-source topic signals detected.")
+        with c_tab3:
+            sents = first_present(metrics_res, ["sentiment", "sentiment_distribution"], {}) or {}
+            if sents:
+                df_sent = pd.DataFrame(list(sents.items()), columns=["Sentiment", "Count"])
+                fig_sent = px.pie(df_sent, values="Count", names="Sentiment", hole=0.5, color="Sentiment", color_discrete_map=SENTIMENT_COLOR)
+                st.plotly_chart(apply_plotly_dark_theme(fig_sent, height=220), use_container_width=True)
+            else:
+                empty_state("No sentiment telemetry available.")
 
 
 # =====================================================
 # PAGE 2 — LIVE NEWS
 # =====================================================
 elif page == "Live News":
-    st.markdown("### 🔴 LIVE NEWS STREAM")
-    st.caption("Real-time feed with multi-parameter filtering")
+    st.markdown(f'<div class="section-title">LIVE NEWS EXPLORER</div>', unsafe_allow_html=True)
 
     f1, f2, f3, f4 = st.columns(4)
     with f1:
-        sel_source = st.selectbox("Filter Source", ["All Sources", "Economic Times", "The Hindu", "Indian Express", "Hindustan Times"])
+        sel_source = st.selectbox("Source Publisher", ["All Sources", "Economic Times", "The Hindu", "Indian Express", "Hindustan Times"])
     with f2:
-        sel_cat = st.selectbox("Filter Category", ["All Categories", "Business", "Technology", "Politics", "Sports", "World", "General"])
+        sel_cat = st.selectbox("Category Filter", ["All Categories", "Business", "Technology", "Politics", "Sports", "World", "General"])
     with f3:
-        sel_sent = st.selectbox("Filter Sentiment", ["All Sentiments", "Positive", "Neutral", "Negative"])
+        sel_sent = st.selectbox("Sentiment Filter", ["All Sentiments", "Positive", "Neutral", "Negative"])
     with f4:
-        search_kw = st.text_input("Search Headlines", placeholder="Type keyword...")
+        search_kw = st.text_input("Headline Keyword", placeholder="Search headlines...")
 
     feed_res, feed_ok = fetch_api("/api/live-feed", params={"limit": 50})
-    articles = feed_res.get("articles", []) if feed_ok else []
-
-    filtered = []
-    for a in articles:
-        if sel_source != "All Sources" and a.get("source") != sel_source:
-            continue
-        if sel_cat != "All Categories" and a.get("category") != sel_cat:
-            continue
-        if sel_sent != "All Sentiments" and a.get("sentiment") != sel_sent:
-            continue
-        if search_kw and search_kw.lower() not in a.get("title", "").lower():
-            continue
-        filtered.append(a)
-
-    st.markdown(f"Showing **{len(filtered)}** articles:")
-
-    if filtered:
-        for a in filtered:
-            sent_cls = "badge-positive" if a.get("sentiment") == "Positive" else ("badge-negative" if a.get("sentiment") == "Negative" else "badge-neutral")
-            pub_t = str(a.get("published_date") or "")[:19].replace("T", " ")
-            
-            with st.expander(f"[{a.get('source')}] {a.get('title')}"):
-                st.markdown(f"**Publisher:** `{a.get('source')}` | **Category:** `{a.get('category')}` | **Sentiment:** `{a.get('sentiment')}` | **Published:** `{pub_t}`")
-                st.markdown(f"**Summary:**\n{a.get('summary')}")
-                st.markdown(f"🔗 [Read Source Article]({a.get('link')})")
+    if not feed_ok:
+        unavailable("Live news feed")
     else:
-        st.info("No articles match the selected filter criteria.")
+        articles = [a for a in (first_present(feed_res, ["articles"], []) or []) if isinstance(a, dict)]
+        filtered = []
+        for a in articles:
+            if sel_source != "All Sources" and a.get("source") != sel_source:
+                continue
+            if sel_cat != "All Categories" and a.get("category") != sel_cat:
+                continue
+            if sel_sent != "All Sentiments" and a.get("sentiment") != sel_sent:
+                continue
+            if search_kw and search_kw.lower() not in (a.get("title") or "").lower():
+                continue
+            filtered.append(a)
+
+        st.caption(f"Showing **{len(filtered)}** of **{len(articles)}** live articles")
+
+        if not filtered:
+            empty_state("No articles match your selected filters.")
+        else:
+            for a in filtered:
+                sent = a.get("sentiment") or "Neutral"
+                sent_style = f"color:{COLORS['tertiary']};" if sent == "Positive" else (f"color:{COLORS['error']};" if sent == "Negative" else f"color:{COLORS['muted']};")
+                with st.expander(f"[{a.get('source','Unknown')}] {a.get('title','Untitled')}"):
+                    st.markdown(f"**Category:** `{a.get('category','--')}` &nbsp;|&nbsp; **Sentiment:** <span style='font-weight:700; {sent_style}'>{sent}</span> &nbsp;|&nbsp; **Published:** {time_ago(a.get('published_date'))}", unsafe_allow_html=True)
+                    st.write(a.get("summary") or "No summary available for this item.")
+                    if a.get("link"):
+                        st.markdown(f"[Read full source article →]({a.get('link')})")
 
 
 # =====================================================
 # PAGE 3 — INTELLIGENCE
 # =====================================================
 elif page == "Intelligence":
-    st.markdown("### 📊 DEEP INTELLIGENCE ANALYTICS")
-    st.caption("Multidimensional trend intelligence and cross-publisher metrics")
+    st.markdown(f'<div class="section-title">INTELLIGENCE ANALYTICS</div>', unsafe_allow_html=True)
 
-    time_win = st.select_slider("Select Analytics Time Window", options=["15m", "1h", "6h", "24h", "7d"], value="24h")
-
-    t1, t2, t3 = st.tabs(["Source Performance", "Category Trends", "Sentiment Timeline"])
+    time_win = st.select_slider("Time Window", options=["15m", "1h", "6h", "24h", "7d"], value="24h")
+    t1, t2, t3 = st.tabs(["Source Trends", "Category Trends", "Sentiment Timeline"])
 
     with t1:
         src_res, src_ok = fetch_api("/api/analytics/source-trends", params={"window": time_win, "bucket": "1h"})
-        src_data = src_res.get("timeline", []) if src_ok else []
-        if src_data:
-            df_st = pd.DataFrame(src_data)
-            fig_st = px.line(df_st, x="time", y="count", color="source", title=f"Source Output ({time_win})")
-            st.plotly_chart(apply_plotly_dark_theme(fig_st, height=320), use_container_width=True)
+        src_data = first_present(src_res, ["timeline"], []) if src_ok else []
+        if not src_ok or not src_data:
+            empty_state("No source trend telemetry for this window.")
         else:
-            st.info("Source timeline data unavailable for this window.")
+            try:
+                df = pd.DataFrame(src_data)
+                fig = px.line(df, x="time", y="count", color=df["source"] if "source" in df.columns else None,
+                               color_discrete_sequence=[COLORS["primary"], COLORS["tertiary"], COLORS["secondary"]])
+                st.plotly_chart(apply_plotly_dark_theme(fig, height=340), use_container_width=True)
+            except Exception:
+                unavailable("Source trends")
 
     with t2:
         cat_res, cat_ok = fetch_api("/api/analytics/category-trends", params={"window": time_win, "bucket": "1h"})
-        cat_data = cat_res.get("timeline", []) if cat_ok else []
-        if cat_data:
-            df_ct = pd.DataFrame(cat_data)
-            fig_ct = px.area(df_ct, x="time", y="count", color="category", title=f"Category Trends ({time_win})")
-            st.plotly_chart(apply_plotly_dark_theme(fig_ct, height=320), use_container_width=True)
+        cat_data = first_present(cat_res, ["timeline"], []) if cat_ok else []
+        if not cat_ok or not cat_data:
+            empty_state("No category trend telemetry for this window.")
         else:
-            st.info("Category trends unavailable for this window.")
+            try:
+                df = pd.DataFrame(cat_data)
+                fig = px.area(df, x="time", y="count", color=df["category"] if "category" in df.columns else None)
+                st.plotly_chart(apply_plotly_dark_theme(fig, height=340), use_container_width=True)
+            except Exception:
+                unavailable("Category trends")
 
     with t3:
         sent_res, sent_ok = fetch_api("/api/analytics/sentiment-trends", params={"window": time_win, "bucket": "1h"})
-        sent_data = sent_res.get("timeline", []) if sent_ok else []
-        if sent_data:
-            df_sent = pd.DataFrame(sent_data)
-            fig_sent = px.line(df_sent, x="time", y="count", color="sentiment", color_discrete_map={"Positive": "#00E676", "Neutral": "#8B949E", "Negative": "#FF5252"})
-            st.plotly_chart(apply_plotly_dark_theme(fig_sent, height=320), use_container_width=True)
+        sent_data = first_present(sent_res, ["timeline"], []) if sent_ok else []
+        if not sent_ok or not sent_data:
+            empty_state("No sentiment trend telemetry for this window.")
         else:
-            st.info("Sentiment timeline unavailable for this window.")
+            try:
+                df = pd.DataFrame(sent_data)
+                fig = px.line(df, x="time", y="count", color="sentiment" if "sentiment" in df.columns else None, color_discrete_map=SENTIMENT_COLOR)
+                st.plotly_chart(apply_plotly_dark_theme(fig, height=340), use_container_width=True)
+            except Exception:
+                unavailable("Sentiment trends")
 
 
 # =====================================================
 # PAGE 4 — TEMPORAL INTELLIGENCE
 # =====================================================
 elif page == "Temporal Intelligence":
-    st.markdown("### ⏳ TEMPORAL INTELLIGENCE WORKSPACE")
-    st.caption("Phase 14 Temporal trend analysis, volume anomaly detection, and emerging signals")
+    st.markdown(f'<div class="section-title">TEMPORAL INTELLIGENCE WORKSPACE</div>', unsafe_allow_html=True)
 
     sp_res, sp_ok = fetch_api("/api/analytics/spikes")
-    spikes = sp_res.get("spikes", []) if sp_ok else []
-    
-    if spikes:
-        st.error(f"🚨 **BREAKING ACTIVITY DETECTED:** Category `{spikes[0].get('category')}` volume at **{spikes[0].get('current_volume')} articles** ({spikes[0].get('multiplier', 1.0):.1f}x baseline)")
+    spikes = first_present(sp_res, ["spikes"], []) if sp_ok else []
+    if not sp_ok:
+        unavailable("Spike detection")
+    elif spikes:
+        top = spikes[0] if isinstance(spikes[0], dict) else {}
+        st.error(f"🚨 **Activity Spike Detected**: Category **{top.get('category','Unknown')}** at **{fmt_num(top.get('current_volume'))} articles/hr**")
     else:
-        st.success("🟢 **NORMAL ACTIVITY** — No significant spike detected across news channels.")
+        st.success("🟢 Normal Activity Status — No critical volume spikes detected.")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("#### Emerging Keywords (24h Acceleration)")
+        st.markdown("#### Emerging Keywords")
         kw_res, kw_ok = fetch_api("/api/analytics/keywords")
-        kws = kw_res.get("keywords", []) if kw_ok else []
-        if kws:
-            df_kws = safe_dataframe(kws, column_mapping={"recent_mentions": "Mentions", "growth_pct": "Growth (%)", "keyword": "Keyword"}, default_columns=["Keyword", "Mentions", "Growth (%)"])
-            st.dataframe(df_kws, use_container_width=True)
+        kws = first_present(kw_res, ["keywords"], []) if kw_ok else []
+        if not kw_ok or not kws:
+            empty_state("No emerging keywords detected.")
         else:
-            st.info("No emerging keywords found.")
-            
+            st.dataframe(keywords_to_display_df(kws), use_container_width=True)
+
     with col2:
-        st.markdown("#### Emerging Entities (NER Growth)")
+        st.markdown("#### Emerging Entities")
         ent_res, ent_ok = fetch_api("/api/analytics/entities")
-        ents = ent_res.get("entities", []) if ent_ok else []
-        if ents:
-            df_ents = safe_dataframe(ents, column_mapping={"entity": "Entity", "type": "Type", "recent_mentions": "Mentions", "growth_pct": "Growth (%)"}, default_columns=["Entity", "Type", "Mentions", "Growth (%)"])
-            st.dataframe(df_ents, use_container_width=True)
+        ents = first_present(ent_res, ["entities"], []) if ent_ok else []
+        if not ent_ok or not ents:
+            empty_state("No emerging entities detected.")
         else:
-            st.info("No emerging entities found.")
+            st.dataframe(entities_to_display_df(ents), use_container_width=True)
 
 
 # =====================================================
 # PAGE 5 — SEARCH
 # =====================================================
 elif page == "Search":
-    st.markdown("### 🔍 HYBRID INTELLIGENCE SEARCH ENGINE")
-    st.caption("Search across news corpus using BM25 Text, 384-dim Dense Vector KNN, or Hybrid RRF Search")
+    st.markdown(f'<div class="section-title">HYBRID SEARCH ENGINE</div>', unsafe_allow_html=True)
 
-    q = st.text_input("Enter Search Query", placeholder="e.g. economy growth in India, technology, stocks...")
-    
-    col_s1, col_s2, col_s3 = st.columns(3)
-    with col_s1:
-        search_mode = st.radio("Search Retrieval Mode", ["hybrid", "bm25", "knn"], index=0, horizontal=True)
-    with col_s2:
-        search_cat = st.selectbox("Category Filter", ["All", "Business", "Technology", "Politics", "Sports", "World"])
-    with col_s3:
-        search_limit = st.slider("Result Limit", 5, 30, 10)
+    tabs = st.tabs(["Hybrid RRF Search", "Keyword BM25", "Semantic Vector KNN"])
+    modes = ["hybrid", "bm25", "knn"]
 
-    if q.strip():
-        params = {"q": q.strip(), "type": search_mode, "limit": search_limit}
-        if search_cat != "All":
-            params["category"] = search_cat
-            
-        s_res, s_ok = fetch_api("/api/search", params=params)
-        hits = s_res.get("articles", []) if s_ok else []
-        
-        if hits:
-            st.markdown(f"Found **{len(hits)}** matching results via **{search_mode.upper()}** retrieval:")
-            for h in hits:
-                score = h.get("_score", 0.0)
-                st.markdown(f"""
-                    <div class="intel-card">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="badge badge-source">{h.get('source')}</span>
-                            <span class="badge badge-category">Score: {score:.4f}</span>
-                        </div>
-                        <div style="font-size: 15px; font-weight: 700; color: #F0F6FC; margin: 6px 0;">
-                            <a href="{h.get('link', '#')}" target="_blank" style="color: #58A6FF; text-decoration: none;">{h.get('title')}</a>
-                        </div>
-                        <div style="font-size: 12px; color: #8B949E;">{h.get('summary')}</div>
-                        <div style="font-size: 11px; color: #7EE787; margin-top: 6px;">
-                            ✓ Matched via {search_mode.upper()} Retrieval Engine (ES Index: news_articles)
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.warning("No search results found for this query.")
+    for tab, mode in zip(tabs, modes):
+        with tab:
+            q = st.text_input("Enter search query...", key=f"q_{mode}", placeholder="e.g. solid-state battery technology...")
+            fc1, fc2, fc3 = st.columns(3)
+            with fc1:
+                search_cat = st.selectbox("Category Filter", ["All", "Business", "Technology", "Politics", "Sports", "World"], key=f"cat_{mode}")
+            with fc2:
+                search_sent = st.selectbox("Sentiment Filter", ["All", "Positive", "Neutral", "Negative"], key=f"sent_{mode}")
+            with fc3:
+                search_limit = st.slider("Max Results", 5, 30, 10, key=f"lim_{mode}")
+
+            if q.strip():
+                params = {"q": q.strip(), "type": mode, "limit": search_limit}
+                if search_cat != "All":
+                    params["category"] = search_cat
+                if search_sent != "All":
+                    params["sentiment"] = search_sent
+
+                s_res, s_ok = fetch_api("/api/search", params=params)
+                if not s_ok:
+                    unavailable("Search engine")
+                else:
+                    hits = [h for h in (first_present(s_res, ["articles", "results"], []) or []) if isinstance(h, dict)]
+                    if not hits:
+                        empty_state("No articles found matching query.")
+                    else:
+                        st.caption(f"Retrieved **{len(hits)}** results via **{mode.upper()}** engine")
+                        for h in hits:
+                            score = h.get("_score") or h.get("score")
+                            score_s = f"{float(score):.3f}" if isinstance(score, (int, float)) else "--"
+                            st.markdown(f"""
+                                <div class="feed-card">
+                                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                                        <span class="badge-pill" style="background:rgba(34,211,238,0.15); color:{COLORS['primary']};">{h.get('source','--')}</span>
+                                        <span style="font-family:'JetBrains Mono'; font-size:11px; color:{COLORS['muted']};">Score {score_s}</span>
+                                    </div>
+                                    <div style="font-size:15px; font-weight:700; margin:8px 0;">
+                                        <a href="{h.get('link','#')}" target="_blank" style="color:{COLORS['primary']}; text-decoration:none;">{h.get('title','Untitled')}</a>
+                                    </div>
+                                    <div style="font-size:12.5px; color:{COLORS['muted']};">{h.get('summary','')}</div>
+                                </div>
+                            """, unsafe_allow_html=True)
 
 
 # =====================================================
 # PAGE 6 — AI ANALYST
 # =====================================================
 elif page == "AI Analyst":
-    st.markdown("### 🤖 AI NEWS ANALYST")
-    st.caption("Ask questions about the indexed news intelligence.")
+    st.markdown(f'<div class="section-title">AI NEWS ANALYST</div>', unsafe_allow_html=True)
 
-    st.markdown("**Suggested Queries:**")
     sq1, sq2, sq3 = st.columns(3)
-    user_q = ""
-    if sq1.button("What are the major news trends today?"):
-        user_q = "What are the major news trends today?"
-    if sq2.button("Which topics are appearing across multiple sources?"):
-        user_q = "Which topics are appearing across multiple sources?"
-    if sq3.button("What major volume spikes were detected?"):
-        user_q = "What major volume spikes were detected?"
+    user_q = st.session_state.get("ai_q", "")
+    if sq1.button("What's trending in tech today?"):
+        user_q = "What's trending in tech today?"
+    if sq2.button("What major news spikes occurred today?"):
+        user_q = "What major news spikes occurred today?"
+    if sq3.button("What topics appear across multiple sources?"):
+        user_q = "What topics appear across multiple sources?"
 
-    input_q = st.text_area("Ask AI Analyst", value=user_q, placeholder="e.g. Summarize top economic developments reported today...")
-    
-    if st.button("Ask AI Analyst", type="primary") and input_q.strip():
-        with st.spinner("Executing Agentic Intent Routing & Grounded RAG..."):
+    input_q = st.text_area("Ask AI Analyst", value=user_q, placeholder="e.g. Compare coverage of market trends...")
+
+    if st.button("Query AI Analyst", type="primary") and input_q.strip():
+        with st.spinner("Executing intent routing & retrieving evidence..."):
             rag_res, rag_ok = post_api("/api/ai/ask", {"question": input_q.strip()})
-            
-        if rag_ok and "error" not in rag_res:
-            st.markdown("#### 💡 AI ANSWER")
-            st.info(rag_res.get("answer"))
 
-            st.markdown("#### 📌 KEY INSIGHTS")
-            insights = rag_res.get("insights", [])
+        if not rag_ok:
+            st.error(f"AI Analyst is temporarily unavailable ({rag_res.get('error','unknown error')}).")
+        else:
+            answer = rag_res.get("answer")
+            st.markdown("#### AI Response")
+            if answer:
+                st.info(answer)
+            else:
+                st.warning("Insufficient evidence was found in the indexed corpus to answer this query.")
+
+            insights = first_present(rag_res, ["insights"], []) or []
+            st.markdown("#### Key Takeaways")
             if insights:
                 for ins in insights:
-                    st.markdown(f"• {ins}")
-            else:
-                st.markdown("• Answer generated directly from retrieved article context.")
+                    st.markdown(f"- {ins}")
 
-            st.markdown("#### 📚 SOURCE EVIDENCE & CITATIONS")
-            sources = rag_res.get("sources", [])
-            if sources:
-                for idx, src in enumerate(sources, 1):
-                    st.markdown(f"""
-                        <div class="intel-card">
-                            <div style="font-weight: 700; color: #58A6FF;">[{idx}] {src.get('title')}</div>
-                            <div style="font-size: 12px; color: #8B949E;">Source: <b>{src.get('source')}</b> | Published: {str(src.get('published_date'))[:19]}</div>
-                            <div style="font-size: 11px; margin-top: 4px;"><a href="{src.get('link', '#')}" target="_blank" style="color: #7EE787;">Read Source Article →</a></div>
-                        </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.caption("No specific article citations attached.")
-
-            with st.expander("How this answer was generated"):
+            with st.expander("Execution Trace & Retrieval Metadata"):
+                tools = first_present(rag_res, ["tools_executed"], []) or []
                 st.markdown(f"""
                     <div class="trace-box">
-                        Intent Detected : {rag_res.get('intent', 'UNKNOWN')}<br>
-                        Provider        : {rag_res.get('provider', 'RAG')}<br>
-                        Tools Executed  : {', '.join(rag_res.get('tools_executed', []))}<br>
-                        Docs Retrieved  : {len(sources)}
+                        Intent Detected : {rag_res.get('intent','UNKNOWN')}<br>
+                        Provider        : {rag_res.get('provider','RAG')}<br>
+                        Tools Executed  : {', '.join(tools) if tools else '--'}<br>
+                        Docs Retrieved  : {len(first_present(rag_res, ["sources"], []) or [])}
                     </div>
                 """, unsafe_allow_html=True)
-        else:
-            st.error(f"AI Analyst service unavailable: {rag_res.get('error', 'Unknown Error')}")
 
 
 # =====================================================
 # PAGE 7 — ARTICLE EXPLORER
 # =====================================================
 elif page == "Article Explorer":
-    st.markdown("### 📄 ARTICLE EXPLORER")
-    st.caption("Inspect raw and enriched MongoDB document structures")
+    st.markdown(f'<div class="section-title">ARTICLE INSPECTOR</div>', unsafe_allow_html=True)
 
-    target_id = st.text_input("Enter Article ID or Link")
-    
+    target_id = st.text_input("Article ID or Document Link")
     if target_id.strip():
         art_res, art_ok = fetch_api(f"/api/articles/{target_id.strip()}")
-        if art_ok:
-            st.markdown(f"### {art_res.get('title')}")
-            st.markdown(f"**Source:** `{art_res.get('source')}` | **Authors:** `{', '.join(art_res.get('authors', []))}` | **Published:** `{art_res.get('published_date')}`")
-            st.markdown("#### Summary")
-            st.write(art_res.get("summary"))
-            st.markdown("#### Clean Content")
-            st.text_area("Article Content", art_res.get("clean_content"), height=250)
-            st.markdown("#### Pipeline Processing State")
-            st.json(art_res.get("processing", {}))
-        else:
+        if not art_ok or not art_res:
             st.error("Article not found in database.")
+        else:
+            st.markdown(f"### {art_res.get('title','Untitled article')}")
+            st.caption(f"{art_res.get('source','--')} · {time_ago(art_res.get('published_date'))}")
+            st.write(art_res.get("summary") or "No summary available.")
 
 
 # =====================================================
 # PAGE 8 — SYSTEM HEALTH
 # =====================================================
 elif page == "System Health":
-    st.markdown("### 🛠️ SYSTEM HEALTH & MONITORING")
-    st.caption("Technical infrastructure state, component metrics, and consumer lag")
-
-    h_res, h_ok = fetch_api("/health")
-    m_res, m_ok = fetch_api("/api/metrics")
+    st.markdown(f'<div class="section-title">SYSTEM HEALTH & MONITORING</div>', unsafe_allow_html=True)
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("FastAPI Backend", "Healthy" if h_ok else "Offline")
-    m2.metric("MongoDB Database", "Healthy" if h_res.get("mongodb") == "ok" else "Offline")
-    m3.metric("Elasticsearch Engine", "Healthy" if h_res.get("elasticsearch") == "ok" else "Offline")
-    m4.metric("Total Documents", f"{m_res.get('total_articles', 0):,}")
+    m1.metric("API Server", "Healthy" if health_ok else "Offline")
+    m2.metric("MongoDB", "Healthy" if mongo_status in ("ok", "healthy", "up") else "Offline")
+    m3.metric("Elasticsearch", "Healthy" if es_status in ("ok", "healthy", "up") else "Offline")
+    m4.metric("Total Documents", fmt_num(first_present(metrics_res, ["total_articles"], 0)))
 
     st.markdown("---")
-    st.markdown("#### Pipeline Queue Metrics")
-    q1, q2, q3 = st.columns(3)
-    q1.metric("Completed Pipeline Jobs", f"{m_res.get('completed_articles', 0):,}")
-    q2.metric("Pending Pipeline Jobs", f"{m_res.get('pending_articles', 0):,}")
-    q3.metric("Failed / Retry Queue", f"{m_res.get('failed_articles', 0):,}")
+    st.markdown("#### Service Status")
+    for name, ok in services:
+        st.markdown(f"<div style='padding:8px 0; border-bottom:1px solid {COLORS['border_variant']}; display:flex; justify-content:space-between;'><span>{name}</span>{status_dot(ok)}</div>", unsafe_allow_html=True)
