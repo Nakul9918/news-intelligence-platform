@@ -20,16 +20,23 @@ def get_mongo_query(article_id: str) -> dict:
         return {"$or": [{"_id": ObjectId(article_id)}, {"article_id": article_id}]}
     return {"$or": [{"article_id": article_id}, {"link": article_id}]}
 
+def get_clean_label(val, default_val: str) -> str:
+    """Safely extract non-empty string label from string or dict."""
+    if isinstance(val, str) and val.strip():
+        return val.strip()
+    if isinstance(val, dict):
+        lbl = val.get("label")
+        if isinstance(lbl, str) and lbl.strip():
+            return lbl.strip()
+    return default_val
+
 def format_article_summary(article: dict) -> dict:
     """Format article for feed & table view."""
     src = article.get("source")
     source_name = src if isinstance(src, str) else (src.get("name", "Unknown") if isinstance(src, dict) else "Unknown")
     
-    cat = article.get("category")
-    cat_label = cat if isinstance(cat, str) else (cat.get("label", "General") if isinstance(cat, dict) else "General")
-    
-    sent = article.get("sentiment")
-    sent_label = sent if isinstance(sent, str) else (sent.get("label", "Neutral") if isinstance(sent, dict) else "Neutral")
+    cat_label = get_clean_label(article.get("category"), "General")
+    sent_label = get_clean_label(article.get("sentiment"), "Neutral")
 
     summary_obj = article.get("summary")
     summary_text = summary_obj if isinstance(summary_obj, str) else (summary_obj.get("text", "") if isinstance(summary_obj, dict) else "")
@@ -52,11 +59,8 @@ def format_article_full(article: dict) -> dict:
     src = article.get("source")
     source_name = src if isinstance(src, str) else (src.get("name", "Unknown") if isinstance(src, dict) else "Unknown")
     
-    cat = article.get("category")
-    cat_val = cat if isinstance(cat, dict) else {"label": str(cat or "General"), "score": 1.0}
-    
-    sent = article.get("sentiment")
-    sent_val = sent if isinstance(sent, dict) else {"label": str(sent or "Neutral"), "score": 1.0}
+    cat_val = article.get("category") if isinstance(article.get("category"), dict) else {"label": str(article.get("category") or "General"), "score": 1.0}
+    sent_val = article.get("sentiment") if isinstance(article.get("sentiment"), dict) else {"label": str(article.get("sentiment") or "Neutral"), "score": 1.0}
 
     summary_obj = article.get("summary")
     summary_text = summary_obj if isinstance(summary_obj, str) else (summary_obj.get("text", "") if isinstance(summary_obj, dict) else "")
@@ -189,31 +193,31 @@ def get_live_feed(
     sentiment: Optional[str] = None,
     q: Optional[str] = None
 ):
-    """Fetch incoming articles sorted by created_at descending with optional filtering across full corpus."""
+    """Fetch incoming articles sorted by created_at descending with strict filtering across full corpus."""
     mongo_query = {}
     and_conditions = []
 
     if source and source != "All Sources":
         and_conditions.append({
             "$or": [
-                {"source": {"$regex": source, "$options": "i"}},
-                {"source.name": {"$regex": source, "$options": "i"}}
+                {"source": source},
+                {"source.name": source}
             ]
         })
 
     if category and category != "All Categories":
         and_conditions.append({
             "$or": [
-                {"category": {"$regex": category, "$options": "i"}},
-                {"category.label": {"$regex": category, "$options": "i"}}
+                {"category": category},
+                {"category.label": category}
             ]
         })
 
     if sentiment and sentiment != "All Sentiments":
         and_conditions.append({
             "$or": [
-                {"sentiment": {"$regex": sentiment, "$options": "i"}},
-                {"sentiment.label": {"$regex": sentiment, "$options": "i"}}
+                {"sentiment": sentiment},
+                {"sentiment.label": sentiment}
             ]
         })
 
