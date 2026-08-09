@@ -1,7 +1,7 @@
 """
 =====================================================
 News Intelligence Command Center — Enterprise Dashboard
-Version : 15.0 (Production Clean Architecture & Fully Synchronized Analytics)
+Version : 16.0 (Enhanced Chart Visuals & Intelligent Analytical Insights)
 =====================================================
 """
 
@@ -494,9 +494,31 @@ if page == "Command Center":
         with t_src:
             if sources_dict:
                 df_src = pd.DataFrame(list(sources_dict.items()), columns=["Source", "Articles"]).sort_values("Articles")
-                fig_src = px.bar(df_src, x="Articles", y="Source", orientation="h", color_discrete_sequence=[COLORS["cyan"]])
-                fig_src.update_layout(showlegend=False)
+                total_src_art = df_src["Articles"].sum() or 1
+                top_src_name = df_src.iloc[-1]["Source"] if len(df_src) > 0 else "Unknown"
+                top_src_count = df_src.iloc[-1]["Articles"] if len(df_src) > 0 else 0
+                top_src_pct = (top_src_count / total_src_art) * 100
+
+                fig_src = px.bar(
+                    df_src, x="Articles", y="Source", orientation="h",
+                    color="Source",
+                    color_discrete_sequence=[COLORS["cyan"], COLORS["blue"], COLORS["purple"], COLORS["green"]],
+                    text="Articles"
+                )
+                fig_src.update_traces(
+                    texttemplate='%{text:,}',
+                    textposition='outside',
+                    marker_line_color='rgba(255,255,255,0.1)',
+                    marker_line_width=1
+                )
+                fig_src.update_layout(showlegend=False, xaxis_title="", yaxis_title="")
                 st.plotly_chart(apply_plotly_dark_theme(fig_src, height=210), use_container_width=True)
+
+                st.markdown(f"""
+                    <div style="background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.25); border-radius:6px; padding:8px 12px; font-size:11.5px; color:{COLORS['text']};">
+                        💡 <b>Source Insight:</b> <b>{top_src_name}</b> is the leading provider with <b>{fmt_num(top_src_count)}</b> articles (<b>{top_src_pct:.1f}%</b> volume share across publishers).
+                    </div>
+                """, unsafe_allow_html=True)
             else:
                 render_empty_box("No source distribution data available.")
 
@@ -504,8 +526,29 @@ if page == "Command Center":
             cats = first_present(metrics_res, ["categories", "category_distribution", "top_categories"], {}) or {}
             if cats:
                 df_cat = pd.DataFrame(list(cats.items()), columns=["Category", "Count"])
-                fig_cat = px.pie(df_cat, values="Count", names="Category", hole=0.5, color_discrete_sequence=[COLORS["blue"], COLORS["cyan"], COLORS["purple"], COLORS["green"], COLORS["orange"]])
+                sorted_cat = df_cat.sort_values("Count", ascending=False)
+                top_cat = sorted_cat.iloc[0]["Category"] if len(sorted_cat) > 0 else "General"
+                top_cat_cnt = sorted_cat.iloc[0]["Count"] if len(sorted_cat) > 0 else 0
+                top_cat_pct = (top_cat_cnt / df_cat["Count"].sum() * 100) if df_cat["Count"].sum() > 0 else 0
+
+                fig_cat = px.pie(
+                    df_cat, values="Count", names="Category", hole=0.55,
+                    color_discrete_sequence=[COLORS["blue"], COLORS["cyan"], COLORS["purple"], COLORS["green"], COLORS["orange"], COLORS["red"]]
+                )
+                # Position text INSIDE donut slices to eliminate messy overlapping callouts on tiny slices!
+                fig_cat.update_traces(
+                    textposition='inside',
+                    textinfo='percent',
+                    insidetextorientation='horizontal',
+                    hoverinfo='label+value+percent'
+                )
                 st.plotly_chart(apply_plotly_dark_theme(fig_cat, height=210), use_container_width=True)
+
+                st.markdown(f"""
+                    <div style="background:rgba(139,92,246,0.08); border:1px solid rgba(139,92,246,0.25); border-radius:6px; padding:8px 12px; font-size:11.5px; color:{COLORS['text']};">
+                        💡 <b>Category Insight:</b> <b>{top_cat}</b> makes up <b>{top_cat_pct:.1f}%</b> of incoming raw feed articles. Real-time NLP classifiers categorize sub-topics into Business, Tech, Politics & World.
+                    </div>
+                """, unsafe_allow_html=True)
             else:
                 render_empty_box("No category distribution data available.")
 
@@ -513,8 +556,28 @@ if page == "Command Center":
             sents = first_present(metrics_res, ["sentiment", "sentiment_distribution"], {}) or {}
             if sents:
                 df_sent = pd.DataFrame(list(sents.items()), columns=["Sentiment", "Count"])
-                fig_sent = px.pie(df_sent, values="Count", names="Sentiment", hole=0.5, color="Sentiment", color_discrete_map=SENTIMENT_COLOR)
+                total_sent = df_sent["Count"].sum() or 1
+                neu_cnt = df_sent[df_sent["Sentiment"] == "Neutral"]["Count"].sum() if len(df_sent[df_sent["Sentiment"] == "Neutral"]) > 0 else 0
+                pos_cnt = df_sent[df_sent["Sentiment"] == "Positive"]["Count"].sum() if len(df_sent[df_sent["Sentiment"] == "Positive"]) > 0 else 0
+                neg_cnt = df_sent[df_sent["Sentiment"] == "Negative"]["Count"].sum() if len(df_sent[df_sent["Sentiment"] == "Negative"]) > 0 else 0
+
+                fig_sent = px.pie(
+                    df_sent, values="Count", names="Sentiment", hole=0.55,
+                    color="Sentiment", color_discrete_map=SENTIMENT_COLOR
+                )
+                # Position text INSIDE donut slices to eliminate messy overlapping callout lines!
+                fig_sent.update_traces(
+                    textposition='inside',
+                    textinfo='percent',
+                    hoverinfo='label+value+percent'
+                )
                 st.plotly_chart(apply_plotly_dark_theme(fig_sent, height=210), use_container_width=True)
+
+                st.markdown(f"""
+                    <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); border-radius:6px; padding:8px 12px; font-size:11.5px; color:{COLORS['text']};">
+                        💡 <b>Sentiment Insight:</b> <b>{(neu_cnt/total_sent*100):.1f}%</b> objective neutral reporting, with <b>{(pos_cnt/total_sent*100):.1f}%</b> positive market trends & <b>{(neg_cnt/total_sent*100):.1f}%</b> negative anomaly alerts.
+                    </div>
+                """, unsafe_allow_html=True)
             else:
                 render_empty_box("No sentiment overview data available.")
 
