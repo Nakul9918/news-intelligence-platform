@@ -430,6 +430,10 @@ elif page == "2. LIVE NEWS":
     if not feed_ok:
         render_unavailable_box("Live News Feed")
     else:
+        fallback_notice = feed_res.get("fallback_notice")
+        if fallback_notice:
+            st.info(f"💡 {fallback_notice}")
+
         articles = feed_res.get("articles", [])
         if not articles:
             render_empty_box("No live articles match the current filter selection.")

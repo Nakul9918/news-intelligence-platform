@@ -235,8 +235,39 @@ def get_live_feed(
 
     cursor = realtime_collection.find(mongo_query).sort("created_at", -1).limit(limit)
     articles = [format_article_summary(doc) for doc in cursor]
+
+    fallback_notice = None
+
+    # SMART FALLBACK: If strict combination yields 0 articles, fallback gracefully so user gets content!
+    if not articles:
+        # Fallback 1: Source + Category (relax sentiment)
+        if source and source != "All Sources" and category and category != "All Categories":
+            fb_query = {"$and": [
+                {"$or": [{"source": {"$regex": f"^{source}$", "$options": "i"}}, {"source.name": {"$regex": f"^{source}$", "$options": "i"}}]},
+                {"$or": [{"category": {"$regex": f"^{category}$", "$options": "i"}}, {"category.label": {"$regex": f"^{category}$", "$options": "i"}}]}
+            ]}
+            cursor = realtime_collection.find(fb_query).sort("created_at", -1).limit(limit)
+            articles = [format_article_summary(doc) for doc in cursor]
+            if articles:
+                fallback_notice = f"Showing latest articles for '{source}' under '{category}' category (relaxing sentiment filter as exact '{sentiment}' has no enriched documents)."
+
+        # Fallback 2: Source only (relax category & sentiment)
+        if not articles and source and source != "All Sources":
+            fb_query = {"$or": [{"source": {"$regex": f"^{source}$", "$options": "i"}}, {"source.name": {"$regex": f"^{source}$", "$options": "i"}}]}
+            cursor = realtime_collection.find(fb_query).sort("created_at", -1).limit(limit)
+            articles = [format_article_summary(doc) for doc in cursor]
+            if articles:
+                fallback_notice = f"Showing latest available articles for '{source}' (relaxing category & sentiment filters to provide active corpus content)."
+
+        # Fallback 3: Corpus wide latest articles
+        if not articles:
+            cursor = realtime_collection.find({}).sort("created_at", -1).limit(limit)
+            articles = [format_article_summary(doc) for doc in cursor]
+            fallback_notice = "Showing overall latest platform articles across all active sources."
+
     return {
         "count": len(articles),
+        "fallback_notice": fallback_notice,
         "articles": articles
     }
 
@@ -258,13 +289,17 @@ def search_articles_api(
     category: Optional[str] = None
 ):
     """Elasticsearch BM25, KNN vector, or Hybrid search endpoint."""
+    from ai.query_router import auto_correct_spelling
+    corrected_q, was_corrected = auto_correct_spelling(q)
+    q_search = corrected_q if was_corrected else q
+
     try:
         es = get_es_client()
         if not es.ping():
             raise Exception("ES unreachable")
 
         if type == "bm25":
-            hits = es_bm25_search(q, size=limit, category=category, es=es)
+            hits = es_bm25_search(q_search, size=limit, category=category, es=es)
         elif type == "knn":
             from nlp.embeddings import generate_embedding
             vec = generate_embedding(q)

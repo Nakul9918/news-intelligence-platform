@@ -2,7 +2,8 @@
 =====================================================
 Query Understanding & Deterministic Intent Router
 =====================================================
-Parses natural language queries for:
+Parses natural language queries with automatic spelling auto-correction:
+- Typo & Spelling Auto-Correction (difflib fuzzy matching)
 - Source & Category extraction
 - Sentiment filters
 - Natural Language Date & Time Windows (e.g. "August 1 to August 7", "yesterday", "this month")
@@ -10,6 +11,7 @@ Parses natural language queries for:
 """
 
 import re
+import difflib
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timezone, timedelta
 
@@ -59,6 +61,43 @@ MONTH_MAP = {
     "december": 12, "dec": 12
 }
 
+SPELLING_VOCABULARY = [
+    "politics", "political", "business", "technology", "tech", "sports", "sport",
+    "entertainment", "crime", "criminal", "health", "science", "finance", "education",
+    "world", "india", "environment", "economic", "times", "hindu", "express", "hindustan",
+    "market", "inflation", "elections", "cricket", "olympics", "government", "police",
+    "court", "accused", "investigation", "narendra", "modi", "rbi", "reliance", "tata",
+    "today", "yesterday", "month", "week", "developing", "timeline", "compare", "spikes"
+]
+
+
+def auto_correct_spelling(query: str) -> tuple[str, bool]:
+    """
+    Fuzzy auto-corrects typos in user search query.
+    Returns (corrected_query, was_corrected_flag).
+    """
+    tokens = query.strip().split()
+    corrected_tokens = []
+    was_corrected = False
+
+    for token in tokens:
+        clean_tok = token.lower().strip(".,!?\"'()")
+        if len(clean_tok) <= 3 or clean_tok.isdigit():
+            corrected_tokens.append(token)
+            continue
+        
+        matches = difflib.get_close_matches(clean_tok, SPELLING_VOCABULARY, n=1, cutoff=0.7)
+        if matches and matches[0] != clean_tok:
+            # Preserve original casing if title/upper
+            new_tok = matches[0].capitalize() if token.istitle() else matches[0]
+            corrected_tokens.append(new_tok)
+            was_corrected = True
+        else:
+            corrected_tokens.append(token)
+
+    corrected_str = " ".join(corrected_tokens)
+    return corrected_str, was_corrected
+
 
 def parse_date_range_from_text(q_lower: str) -> tuple[Optional[str], Optional[str]]:
     """Extract start_date and end_date strings (YYYY-MM-DD) from natural language text."""
@@ -101,9 +140,11 @@ def parse_date_range_from_text(q_lower: str) -> tuple[Optional[str], Optional[st
 
 
 def analyze_query(query: str) -> Dict[str, Any]:
-    q_lower = query.lower().strip()
+    # 1. Apply Automatic Spelling Correction
+    corrected_query, was_corrected = auto_correct_spelling(query)
+    q_lower = corrected_query.lower().strip()
     
-    # 1. Extract Filters
+    # 2. Extract Filters
     source_filter = None
     for k, v in KNOWN_SOURCES.items():
         if k in q_lower:
@@ -136,7 +177,7 @@ def analyze_query(query: str) -> Dict[str, Any]:
 
     start_date, end_date = parse_date_range_from_text(q_lower)
 
-    # 2. Determine Intent & Tools
+    # 3. Determine Intent & Tools
     tools = []
     if any(term in q_lower for term in ["top 10", "top ten", "top 10 news", "top stories"]):
         intent = "TOP_10_NEWS"
@@ -173,7 +214,9 @@ def analyze_query(query: str) -> Dict[str, Any]:
         tools = ["search_hybrid"]
 
     return {
-        "query": query,
+        "original_query": query,
+        "query": corrected_query,
+        "was_auto_corrected": was_corrected,
         "intent": intent,
         "tools": tools,
         "filters": {
