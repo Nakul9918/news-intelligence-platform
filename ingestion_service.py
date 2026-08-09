@@ -219,7 +219,7 @@ def run_ingestion_cycle(producer, db, published_cache):
                         "clean_content": "",
                         "authors": ["Unknown"],
                         "language": "en",
-                        "published_date": entry.get("published", ""),
+                        "published_date": entry.get("published") or now_iso,
                         "published_datetime": now_iso,
                         "created_at": now_iso,
                         "updated_at": now_iso,

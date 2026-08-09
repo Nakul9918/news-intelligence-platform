@@ -431,7 +431,16 @@ def get_article_content(article, collection):
     result = extract_article(link)
 
     if result is None or not result.get("content") or len(result.get("content").strip()) < MIN_ARTICLE_LENGTH:
-
+        desc = article.get("description", "") or article.get("summary", "") or ""
+        fallback_text = (title + ". " + str(desc)).strip()
+        if len(fallback_text) >= 10:
+            print("✅ Using Title & Description fallback for NLP enrichment")
+            return {
+                "title": title or "Untitled Article",
+                "authors": article.get("authors", ["Unknown"]),
+                "content": fallback_text,
+                "method": "TitleDescriptionFallback"
+            }
         return None
 
     extracted_content = result.get("content").strip()

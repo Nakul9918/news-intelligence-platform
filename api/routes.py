@@ -24,22 +24,52 @@ def get_mongo_query(article_id: str) -> dict:
 def get_clean_label(val, default_val: str) -> str:
     """Safely extract non-empty string label from string or dict."""
     if isinstance(val, str) and val.strip():
-        return val.strip()
+        return val.strip().capitalize()
     if isinstance(val, dict):
-        lbl = val.get("label")
+        lbl = val.get("label") or val.get("category") or val.get("sentiment")
         if isinstance(lbl, str) and lbl.strip():
-            return lbl.strip()
+            return lbl.strip().capitalize()
     return default_val
+
+def infer_category(article: dict) -> str:
+    cat = get_clean_label(article.get("category"), "")
+    if cat and cat != "General":
+        return cat
+    title = (str(article.get("title", "")) + " " + str(article.get("description", ""))).lower()
+    if any(w in title for w in ["sensex", "nifty", "rupee", "bse", "nse", "stock", "fund", "rbi", "market", "trade", "cepa", "bank", "investor", "shares", "company", "profit", "quarter", "economy"]):
+        return "Business"
+    elif any(w in title for w in ["bjp", "congress", "parliament", "monsoon", "govt", "centre", "pm", "modi", "minister", "election", "poll", "padayatra", "party", "court", "bill"]):
+        return "Politics"
+    elif any(w in title for w in ["spacex", "ai", "tech", "cyber", "software", "google", "apple", "app", "digital"]):
+        return "Technology"
+    elif any(w in title for w in ["cricket", "match", "cup", "team", "olympic", "sport", "game", "stadium"]):
+        return "Sports"
+    elif any(w in title for w in ["police", "extradition", "choksi", "arrest", "crime", "fraud", "scam", "jail", "cbi", "ed"]):
+        return "Crime"
+    elif any(w in title for w in ["china", "canada", "us", "hamas", "trump", "russia", "ukraine", "israel", "gaza", "global", "world"]):
+        return "World"
+    return "General"
+
+def infer_sentiment(article: dict) -> str:
+    sent = get_clean_label(article.get("sentiment"), "")
+    if sent and sent != "Neutral":
+        return sent
+    title = (str(article.get("title", "")) + " " + str(article.get("description", ""))).lower()
+    if any(w in title for w in ["gains", "rises", "surge", "up", "record", "growth", "deal", "success", "boost", "strong", "positive", "buying"]):
+        return "Positive"
+    elif any(w in title for w in ["fall", "drops", "crash", "loss", "fraud", "arrest", "attack", "kill", "doubt", "warning", "ban", "crime", "probe", "delay"]):
+        return "Negative"
+    return "Neutral"
 
 def format_article_summary(article: dict) -> dict:
     """Format article for feed & table view."""
     src = article.get("source")
     source_name = src if isinstance(src, str) else (src.get("name", "Unknown") if isinstance(src, dict) else "Unknown")
     
-    cat_label = get_clean_label(article.get("category"), "General")
-    sent_label = get_clean_label(article.get("sentiment"), "Neutral")
+    cat_label = infer_category(article)
+    sent_label = infer_sentiment(article)
 
-    summary_obj = article.get("summary")
+    summary_obj = article.get("summary") or article.get("description")
     summary_text = summary_obj if isinstance(summary_obj, str) else (summary_obj.get("text", "") if isinstance(summary_obj, dict) else "")
 
     return {

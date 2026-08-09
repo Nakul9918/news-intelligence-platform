@@ -102,7 +102,7 @@ def time_ago(ts):
 # API CLIENT LAYER (Fault-Tolerant)
 # =====================================================
 
-@st.cache_data(ttl=3, show_spinner=False)
+@st.cache_data(ttl=1, show_spinner=False)
 def fetch_api(endpoint: str, params: dict = None):
     try:
         resp = requests.get(f"{API_BASE_URL}{endpoint}", params=params, timeout=8)
