@@ -23,6 +23,16 @@ from api.temporal_analytics import (
     get_cross_source_analytics
 )
 
+from api.intelligence_helpers import (
+    get_top10_ranked_news,
+    get_date_explorer_analytics,
+    get_monthly_news_intelligence,
+    get_four_newspaper_comparison,
+    get_developing_stories,
+    get_story_timeline,
+    get_keyword_entity_intelligence,
+)
+
 def run_agentic_rag(question: str) -> Dict[str, Any]:
     """
     Executes complete RAG pipeline:
@@ -42,7 +52,38 @@ def run_agentic_rag(question: str) -> Dict[str, Any]:
     analytics_summaries = []
     retrieval_method = "hybrid"
 
-    # 2. Tool Execution — Temporal & Analytics Tools
+    if "get_top10_ranked_news" in tools:
+        t10 = get_top10_ranked_news(coll, limit=5)
+        t10_titles = [f"Rank {item['rank']}: '{item['headline']}' ({item['source']})" for item in t10.get("articles", [])[:5]]
+        if t10_titles:
+            analytics_summaries.append(f"Top 10 News Ranking: {'; '.join(t10_titles)}.")
+
+    if "get_four_newspaper_comparison" in tools:
+        es_instance = None
+        try:
+            es_instance = get_es_client()
+        except Exception:
+            pass
+        comp = get_four_newspaper_comparison(coll, es_instance, topic=question)
+        if comp.get("publishers"):
+            themes = [f"{p}: {comp['publishers'][p]['data_derived_coverage_theme']}" for p in comp["publishers"] if p in comp["publishers"]]
+            analytics_summaries.append(f"4-Newspaper Coverage Themes: {'; '.join(themes)}.")
+
+    if "get_developing_stories" in tools:
+        devs = get_developing_stories(coll)
+        top_devs = [f"'{item['story_topic']}' [{item['status']}] ({item['update_count']} updates across {len(item['sources_involved'])} sources)" for item in devs.get("developing_stories", [])[:3]]
+        if top_devs:
+            analytics_summaries.append(f"Developing Stories: {'; '.join(top_devs)}.")
+
+    if "get_story_timeline" in tools:
+        st_t = get_story_timeline(coll, topic=filters["category"] or question)
+        if st_t.get("timeline"):
+            analytics_summaries.append(f"Story Evolution Timeline ({st_t['topic']}): {len(st_t['timeline'])} chronological updates traced.")
+
+    if "get_date_explorer_analytics" in tools:
+        dex = get_date_explorer_analytics(coll, start_date=filters["start_date"], end_date=filters["end_date"], category=filters["category"], source=filters["source"])
+        analytics_summaries.append(f"Date Explorer Summary ({dex['start_date']} to {dex['end_date']}): {dex['total_articles']} total articles indexed.")
+
     if "get_spike_analytics" in tools:
         spikes = get_spike_analytics(coll, window=filters["time_window"])
         ov = spikes["overall"]

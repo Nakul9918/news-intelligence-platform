@@ -9,6 +9,7 @@ from typing import Optional, List, Dict, Any
 from collections import Counter
 from bson import ObjectId
 from fastapi import APIRouter, Query, HTTPException
+from pydantic import BaseModel
 
 from api.database import realtime_collection
 from elasticsearch_indexer.indexer import get_es_client, search_articles as es_bm25_search, search_similar_articles as es_knn_search, hybrid_search as es_hybrid_search, ELASTICSEARCH_INDEX
@@ -360,10 +361,121 @@ def analytics_cross_source(min_sources: int = Query(2, ge=2, le=10)):
     return get_cross_source_analytics(realtime_collection, min_sources=min_sources)
 
 # =====================================================
-# Phase 15 — Agentic AI & RAG Endpoint
+# Phase 16 — Advanced News Intelligence Endpoints
 # =====================================================
 
-from pydantic import BaseModel
+from api.intelligence_helpers import (
+    get_top10_ranked_news,
+    get_date_explorer_analytics,
+    get_monthly_news_intelligence,
+    get_four_newspaper_comparison,
+    get_developing_stories,
+    get_story_timeline,
+    get_keyword_entity_intelligence,
+)
+
+@router.get("/api/news/top10")
+def api_top10_news(limit: int = Query(10, ge=1, le=50)):
+    return get_top10_ranked_news(realtime_collection, limit=limit)
+
+@router.get("/api/news/explorer")
+def api_news_explorer(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    source: Optional[str] = None,
+    category: Optional[str] = None,
+    sentiment: Optional[str] = None,
+    q: Optional[str] = None
+):
+    return get_date_explorer_analytics(
+        realtime_collection,
+        start_date=start_date,
+        end_date=end_date,
+        source=source,
+        category=category,
+        sentiment=sentiment,
+        q=q
+    )
+
+@router.get("/api/news/monthly")
+def api_news_monthly(year: int = Query(2026), month: int = Query(8, ge=1, le=12)):
+    return get_monthly_news_intelligence(realtime_collection, year=year, month=month)
+
+@router.get("/api/news/compare-publishers")
+def api_compare_publishers(topic: str = Query("India economy")):
+    es = None
+    try:
+        es = get_es_client()
+    except Exception:
+        pass
+    return get_four_newspaper_comparison(realtime_collection, es, topic=topic)
+
+@router.get("/api/news/developing")
+def api_developing_stories():
+    return get_developing_stories(realtime_collection)
+
+@router.get("/api/news/timeline")
+def api_story_timeline(topic: str = Query("Market")):
+    return get_story_timeline(realtime_collection, topic=topic)
+
+@router.get("/api/news/keyword-intelligence")
+def api_keyword_intelligence(q: str = Query(...)):
+    return get_keyword_entity_intelligence(realtime_collection, term=q, is_entity=False)
+
+@router.get("/api/news/entity-intelligence")
+def api_entity_intelligence(q: str = Query(...)):
+    return get_keyword_entity_intelligence(realtime_collection, term=q, is_entity=True)
+
+class NLSearchRequest(BaseModel):
+    query: str
+
+@router.post("/api/news/nl-search")
+def api_nl_search(req: NLSearchRequest):
+    if not req.query or len(req.query.strip()) < 1:
+        raise HTTPException(status_code=400, detail="Search query must not be empty.")
+
+    from ai.query_router import analyze_query
+    parsed = analyze_query(req.query.strip())
+    
+    # Route execution based on parsed intent
+    if parsed["intent"] == "TOP_10_NEWS":
+        data = get_top10_ranked_news(realtime_collection, limit=10)
+    elif parsed["intent"] == "DEVELOPING_STORIES":
+        data = get_developing_stories(realtime_collection)
+    elif parsed["intent"] == "STORY_TIMELINE":
+        data = get_story_timeline(realtime_collection, topic=parsed["filters"]["category"] or req.query)
+    elif parsed["intent"] == "NEWSPAPER_COMPARISON":
+        es = None
+        try:
+            es = get_es_client()
+        except Exception:
+            pass
+        data = get_four_newspaper_comparison(realtime_collection, es, topic=req.query)
+    elif parsed["intent"] == "DATE_RANGE_QUERY":
+        data = get_date_explorer_analytics(
+            realtime_collection,
+            start_date=parsed["filters"]["start_date"],
+            end_date=parsed["filters"]["end_date"],
+            source=parsed["filters"]["source"],
+            category=parsed["filters"]["category"],
+            sentiment=parsed["filters"]["sentiment"],
+            q=req.query
+        )
+    else:
+        # Standard search fallback using search endpoint logic
+        cursor = realtime_collection.find({
+            "$or": [
+                {"title": {"$regex": req.query, "$options": "i"}},
+                {"clean_content": {"$regex": req.query, "$options": "i"}}
+            ]
+        }).limit(20)
+        articles = [format_article_summary(doc) for doc in cursor]
+        data = {"count": len(articles), "articles": articles}
+
+    return {
+        "parsed": parsed,
+        "results": data
+    }
 
 class AskQuestionRequest(BaseModel):
     question: str

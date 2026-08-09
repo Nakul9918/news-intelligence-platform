@@ -1,7 +1,7 @@
 """
 =====================================================
 News Intelligence Command Center — Enterprise Dashboard
-Version : 17.0 (Resolved Key Mismatches & Live Telemetry Volume Rendering)
+Version : 18.0 (Real-Time News Intelligence & Current Affairs Center)
 =====================================================
 """
 
@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 
 try:
     from streamlit_autorefresh import st_autorefresh
@@ -47,6 +47,13 @@ COLORS = {
 
 SENTIMENT_COLOR = {"Positive": COLORS["green"], "Neutral": COLORS["muted"], "Negative": COLORS["red"]}
 
+DEFAULT_CATEGORIES = [
+    "Politics", "Business", "Technology", "Sports", "World", 
+    "Entertainment", "Crime", "India", "Science", "Health", "Finance", "Education"
+]
+
+TARGET_SOURCES = ["Economic Times", "The Hindu", "Indian Express", "Hindustan Times"]
+
 # =====================================================
 # SCHEMA-SAFE DATA HELPERS (Defensive Contracts)
 # =====================================================
@@ -81,65 +88,6 @@ def first_present(d: dict, keys: list, default=None):
     return default
 
 
-def normalize_records(records, field_aliases: dict, numeric_fields=None):
-    """Ensure API dict lists conform to standardized key names."""
-    numeric_fields = numeric_fields or []
-    if not records or not isinstance(records, list):
-        return []
-    out = []
-    for r in records:
-        if not isinstance(r, dict):
-            continue
-        row = {}
-        for canonical, aliases in field_aliases.items():
-            val = first_present(r, aliases)
-            if canonical in numeric_fields and val is not None:
-                try:
-                    val = float(val)
-                except (TypeError, ValueError):
-                    val = None
-            row[canonical] = val
-        out.append(row)
-    return out
-
-
-KEYWORD_ALIASES = {
-    "keyword": ["keyword", "term", "name", "text"],
-    "mentions": ["mentions", "recent_mentions", "count", "frequency"],
-    "growth": ["growth", "growth_pct", "percentage_growth", "growth_percent"],
-}
-
-ENTITY_ALIASES = {
-    "entity": ["entity", "name", "term"],
-    "type": ["type", "entity_type", "label"],
-    "mentions": ["mentions", "recent_mentions", "count", "frequency"],
-    "growth": ["growth", "growth_pct", "percentage_growth", "growth_percent"],
-}
-
-
-def keywords_to_display_df(records):
-    norm = normalize_records(records, KEYWORD_ALIASES, numeric_fields=["mentions", "growth"])
-    if not norm:
-        return pd.DataFrame(columns=["Keyword", "Mentions", "Growth"])
-    return pd.DataFrame([{
-        "Keyword": r["keyword"] or "Unknown",
-        "Mentions": fmt_num(r["mentions"]),
-        "Growth": fmt_pct(r["growth"]),
-    } for r in norm])
-
-
-def entities_to_display_df(records):
-    norm = normalize_records(records, ENTITY_ALIASES, numeric_fields=["mentions", "growth"])
-    if not norm:
-        return pd.DataFrame(columns=["Entity", "Type", "Mentions", "Growth"])
-    return pd.DataFrame([{
-        "Entity": r["entity"] or "Unknown",
-        "Type": r["type"] or "--",
-        "Mentions": fmt_num(r["mentions"]),
-        "Growth": fmt_pct(r["growth"]),
-    } for r in norm])
-
-
 def time_ago(ts):
     """Best-effort relative time string generator."""
     if not ts:
@@ -169,7 +117,7 @@ def time_ago(ts):
 @st.cache_data(ttl=3, show_spinner=False)
 def fetch_api(endpoint: str, params: dict = None):
     try:
-        resp = requests.get(f"{API_BASE_URL}{endpoint}", params=params, timeout=5)
+        resp = requests.get(f"{API_BASE_URL}{endpoint}", params=params, timeout=8)
         if resp.status_code == 200:
             data = resp.json()
             return (data if isinstance(data, dict) else {}), True
@@ -233,6 +181,16 @@ st.markdown(f"""
         margin-bottom: 12px;
     }}
 
+    .rank-badge {{
+        background: linear-gradient(135deg, {COLORS['cyan']}, {COLORS['blue']});
+        color: #FFFFFF;
+        font-weight: 800;
+        font-size: 13px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        display: inline-block;
+    }}
+
     .badge {{
         display: inline-block;
         padding: 2px 8px;
@@ -247,6 +205,7 @@ st.markdown(f"""
     .badge-green {{ background: rgba(16,185,129,0.15); color: {COLORS['green']}; border: 1px solid rgba(16,185,129,0.3); }}
     .badge-muted {{ background: rgba(156,163,175,0.15); color: {COLORS['muted']}; border: 1px solid rgba(156,163,175,0.3); }}
     .badge-red {{ background: rgba(239,68,68,0.15); color: {COLORS['red']}; border: 1px solid rgba(239,68,68,0.3); }}
+    .badge-orange {{ background: rgba(245,158,11,0.15); color: {COLORS['orange']}; border: 1px solid rgba(245,158,11,0.3); }}
 
     .section-title {{
         font-size: 13.5px;
@@ -286,10 +245,11 @@ st.sidebar.markdown(f"""
 st.sidebar.markdown("---")
 
 NAV_GROUPS = {
-    "COMMAND CENTER": ["Command Center"],
-    "NEWS": ["Live News Feed", "Search Workspace", "Article Inspector"],
-    "INTELLIGENCE": ["Temporal Analytics", "AI Analyst (RAG)"],
-    "SYSTEM": ["System Health"],
+    "COMMAND CENTER": ["Top 10 & Command Center"],
+    "NEWS INTELLIGENCE": ["NL Intelligence Search", "Live Feed & Date Explorer", "Monthly Intelligence"],
+    "CROSS-SOURCE & COMPARISON": ["4-Newspaper Comparison", "Current Affairs & Developing"],
+    "SEARCH & DEEP DIVES": ["Category, Keyword & Entity Deep-Dive", "Search Workspace"],
+    "AI & SYSTEM": ["AI News Analyst (RAG)", "System Health"],
 }
 flat_pages = [p for group in NAV_GROUPS.values() for p in group]
 
@@ -302,8 +262,8 @@ page = st.sidebar.radio("Navigate", flat_pages, label_visibility="collapsed")
 
 st.sidebar.markdown("---")
 st.sidebar.caption("AUTO REFRESH")
-auto_refresh = st.sidebar.checkbox("Enable Refresh", value=True)
-refresh_sec = st.sidebar.select_slider("Interval (seconds)", options=[5, 10, 15, 30], value=10, label_visibility="collapsed")
+auto_refresh = st.sidebar.checkbox("Enable Live Refresh", value=True)
+refresh_sec = st.sidebar.select_slider("Interval (sec)", options=[5, 10, 15, 30], value=10, label_visibility="collapsed")
 if auto_refresh:
     st_autorefresh(interval=refresh_sec * 1000, key="nav_autorefresh")
 
@@ -314,7 +274,6 @@ metrics_res, metrics_ok = fetch_api("/api/metrics")
 
 mongo_status = first_present(health_res, ["mongodb", "mongo"], "down")
 es_status = first_present(health_res, ["elasticsearch", "es"], "down")
-kafka_status = first_present(health_res, ["kafka"], "unknown")
 
 def status_dot(ok):
     return f'<span style="color:{COLORS["green"]}">●</span> Healthy' if ok else f'<span style="color:{COLORS["red"]}">●</span> Offline'
@@ -348,9 +307,6 @@ def apply_plotly_dark_theme(fig, height=230):
     return fig
 
 
-# =====================================================
-# HEADER BAR (Shared Across Pages)
-# =====================================================
 def render_header(title, subtitle):
     c1, c2 = st.columns([3, 2])
     with c1:
@@ -370,10 +326,10 @@ def render_header(title, subtitle):
 
 
 # =====================================================
-# PAGE 1 — COMMAND CENTER
+# PAGE 1 — TOP 10 & COMMAND CENTER
 # =====================================================
-if page == "Command Center":
-    render_header("COMMAND CENTER", "Real-time news ingestion, volume metrics, and high-level distribution analytics")
+if page == "Top 10 & Command Center":
+    render_header("REAL-TIME COMMAND CENTER", "Top 10 ranked stories right now, live news throughput, and telemetry alerts")
 
     total_art = first_present(metrics_res, ["total_articles"], 0) or 0
     today_art = first_present(metrics_res, ["today_articles"], 0) or 0
@@ -396,224 +352,209 @@ if page == "Command Center":
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # BREAKING ANOMALY ALERT BANNER & 24H VOLUME CHART
-    col_left, col_right = st.columns([1, 2])
+    # TOP 10 NEWS RIGHT NOW SECTION
+    st.markdown('<div class="section-title">🔥 TOP 10 NEWS RIGHT NOW</div>', unsafe_allow_html=True)
+    t10_res, t10_ok = fetch_api("/api/news/top10", params={"limit": 10})
+    t10_articles = first_present(t10_res, ["articles"], []) if t10_ok else []
 
-    with col_left:
-        st.markdown('<div class="section-title">BREAKING ANOMALY STATUS</div>', unsafe_allow_html=True)
-        if not spikes_ok:
-            render_unavailable_box("Spike Detection Telemetry")
-        elif not spike_list:
+    if not t10_ok or not t10_articles:
+        render_empty_box("Top 10 news stories ranking in real-time...")
+    else:
+        for item in t10_articles:
+            sent = item.get("sentiment") or "Neutral"
+            sent_cls = "badge-green" if sent == "Positive" else ("badge-red" if sent == "Negative" else "badge-muted")
             st.markdown(f"""
-                <div class="card-box" style="border-left: 4px solid {COLORS['green']};">
-                    <div style="font-weight:700; color:{COLORS['green']}; font-size:13px;">🟢 STABLE INGESTION STATUS</div>
-                    <div style="font-size:12px; margin-top:4px; color:{COLORS['muted']};">
-                        All ingestion pipelines streaming normally. No abnormal category spikes detected.
+                <div class="card-box" style="margin-bottom:10px; padding:12px 16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div style="display:flex; align-items:center; gap:10px; flex:1;">
+                            <span class="rank-badge">#{item.get('rank',1)}</span>
+                            <a href="{item.get('link','#')}" target="_blank" style="font-size:15px; font-weight:700; color:#FFFFFF; text-decoration:none;">{item.get('headline','Untitled')}</a>
+                        </div>
+                        <span style="font-size:11px; color:{COLORS['muted']}; white-space:nowrap; margin-left:12px;">{time_ago(item.get('published_date'))}</span>
                     </div>
-                </div>
-            """, unsafe_allow_html=True)
-        else:
-            top = spike_list[0] if isinstance(spike_list[0], dict) else {}
-            cat = top.get("category") or "General"
-            curr = fmt_num(top.get("current_volume"))
-            mult = top.get("multiplier")
-            mult_s = f"{float(mult):.2f}x" if isinstance(mult, (int, float)) else "--"
-            st.markdown(f"""
-                <div class="card-box" style="border-left: 4px solid {COLORS['red']}; background:rgba(239,68,68,0.08);">
-                    <div style="font-weight:700; color:{COLORS['red']}; font-size:13px;">⚠️ VOLUME SPIKE DETECTED</div>
-                    <div style="font-size:13px; font-weight:700; margin-top:4px;">Category: {cat}</div>
-                    <div style="font-size:12px; color:{COLORS['muted']}; margin-top:4px;">
-                        Current Velocity: <b>{curr}</b> art/hr<br>
-                        Spike Multiplier: <span style="color:{COLORS['orange']}; font-weight:700;">{mult_s}</span>
+                    <div style="font-size:12.5px; color:{COLORS['muted']}; margin:8px 0;">{item.get('summary','')}</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
+                        <div>
+                            <span class="badge badge-cyan">{item.get('source','--')}</span>
+                            <span class="badge badge-purple" style="margin-left:6px;">{item.get('category','General')}</span>
+                        </div>
+                        <span class="badge {sent_cls}">{sent}</span>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
 
-    with col_right:
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 24H VOLUME & DISTRIBUTION CHARTS
+    c_left, c_right = st.columns([1, 1])
+    with c_left:
         st.markdown('<div class="section-title">24-HOUR ARTICLE VOLUME TREND</div>', unsafe_allow_html=True)
         vol_res, vol_ok = fetch_api("/api/analytics/volume", params={"window": "24h", "bucket": "1h"})
         vol_data = first_present(vol_res, ["data", "timeline", "items"], []) if vol_ok else []
-        if not vol_ok or not vol_data:
-            render_empty_box("Volume telemetry data initializing...")
-        else:
+        if vol_ok and vol_data:
             try:
                 df_vol = pd.DataFrame(vol_data)
                 time_col = "timestamp" if "timestamp" in df_vol.columns else ("time" if "time" in df_vol.columns else df_vol.columns[0])
                 count_col = "count" if "count" in df_vol.columns else df_vol.columns[1]
-
                 fig = go.Figure()
                 fig.add_trace(go.Scatter(
                     x=df_vol[time_col], y=df_vol[count_col], mode="lines+markers", fill="tozeroy",
                     line=dict(color=COLORS["cyan"], width=2.5),
-                    marker=dict(size=5, color=COLORS["cyan"]),
                     fillcolor="rgba(6, 182, 212, 0.15)",
-                    hovertemplate="%{x}<br>Volume: <b>%{y} articles</b><extra></extra>"
                 ))
-                st.plotly_chart(apply_plotly_dark_theme(fig, height=160), use_container_width=True)
+                st.plotly_chart(apply_plotly_dark_theme(fig, height=190), use_container_width=True)
             except Exception:
                 render_unavailable_box("Volume Chart")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # LIVE NEWS FEED & DISTRIBUTION CHARTS
-    f_col, c_col = st.columns([1, 1])
-
-    with f_col:
-        st.markdown('<div class="section-title">LATEST LIVE ARTICLES</div>', unsafe_allow_html=True)
-        feed_res, feed_ok = fetch_api("/api/live-feed", params={"limit": 5})
-        articles = first_present(feed_res, ["articles"], []) if feed_ok else []
-        if not feed_ok:
-            render_unavailable_box("Live News Feed")
-        elif not articles:
-            render_empty_box("No live articles ingested yet.")
         else:
-            for a in articles[:5]:
-                if not isinstance(a, dict):
-                    continue
-                sent = a.get("sentiment") or "Neutral"
-                sent_cls = "badge-green" if sent == "Positive" else ("badge-red" if sent == "Negative" else "badge-muted")
-                st.markdown(f"""
-                    <div class="card-box" style="margin-bottom:8px; padding:10px 12px;">
-                        <div style="display:flex; justify-content:space-between; align-items:start;">
-                            <div style="font-size:13px; font-weight:600; color:#F3F4F6; flex:1;">{a.get('title','Untitled')}</div>
-                            <span style="font-size:10.5px; color:{COLORS['muted']}; white-space:nowrap; margin-left:8px;">{time_ago(a.get('published_date'))}</span>
-                        </div>
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
-                            <div>
-                                <span class="badge badge-purple">{a.get('category','General')}</span>
-                                <span style="font-size:11px; color:{COLORS['muted']}; margin-left:6px;">{a.get('source','Unknown')}</span>
+            render_empty_box("Volume telemetry data initializing...")
+
+    with c_right:
+        st.markdown('<div class="section-title">PUBLISHER SHARE DISTRIBUTION</div>', unsafe_allow_html=True)
+        if sources_dict:
+            df_src = pd.DataFrame(list(sources_dict.items()), columns=["Source", "Articles"]).sort_values("Articles")
+            fig_src = px.bar(df_src, x="Articles", y="Source", orientation="h", color="Source", color_discrete_sequence=[COLORS["cyan"], COLORS["blue"], COLORS["purple"], COLORS["green"]], text="Articles")
+            fig_src.update_traces(texttemplate='%{text:,}', textposition='outside')
+            fig_src.update_layout(showlegend=False)
+            st.plotly_chart(apply_plotly_dark_theme(fig_src, height=190), use_container_width=True)
+        else:
+            render_empty_box("No publisher distribution data available.")
+
+
+# =====================================================
+# PAGE 2 — NL INTELLIGENCE SEARCH
+# =====================================================
+elif page == "NL Intelligence Search":
+    render_header("FREE-TEXT & NATURAL LANGUAGE INTELLIGENCE SEARCH", "Ask about any topic, person, event, organization, or custom date range...")
+
+    nl_query = st.text_input(
+        "Enter your query in plain English:",
+        placeholder="e.g. 'crime news from August 1 to August 7', 'top technology news this month', 'latest RBI updates'..."
+    )
+
+    b1, b2, b3, b4 = st.columns(4)
+    if b1.button("top 10 news today"):
+        nl_query = "top 10 news today"
+    if b2.button("crime news this week"):
+        nl_query = "crime news this week"
+    if b3.button("compare all four newspapers on economy"):
+        nl_query = "compare all four newspapers on economy"
+    if b4.button("developing stories right now"):
+        nl_query = "developing stories right now"
+
+    if nl_query.strip():
+        with st.spinner("Parsing intent & querying corpus..."):
+            nl_res, nl_ok = post_api("/api/news/nl-search", {"query": nl_query.strip()})
+
+        if not nl_ok:
+            render_unavailable_box("Natural Language Intelligence Search")
+        else:
+            parsed = nl_res.get("parsed", {})
+            results = nl_res.get("results", {})
+
+            st.markdown(f"""
+                <div class="trace-box" style="margin-bottom:14px;">
+                    Intent Detected  : <b>{parsed.get('intent','ARTICLE_SEARCH')}</b><br>
+                    Parsed Filters   : Source={parsed.get('filters',{}).get('source') or 'Any'} | Category={parsed.get('filters',{}).get('category') or 'Any'} | Time={parsed.get('filters',{}).get('time_window')} | Range=({parsed.get('filters',{}).get('start_date')} to {parsed.get('filters',{}).get('end_date')})<br>
+                    Executed Tools   : {', '.join(parsed.get('tools',[]))}
+                </div>
+            """, unsafe_allow_html=True)
+
+            articles = first_present(results, ["articles", "results"], []) or []
+            if isinstance(results, dict) and "developing_stories" in results:
+                st.markdown("#### Developing Stories Results")
+                for dev in results["developing_stories"]:
+                    st.markdown(f"• **{dev.get('story_topic')}** [{dev.get('status')}] — {dev.get('update_count')} updates across {len(dev.get('sources_involved',[]))} sources")
+            elif isinstance(results, dict) and "publishers" in results:
+                st.markdown("#### 4-Newspaper Comparison Results")
+                for pub, p_data in results["publishers"].items():
+                    st.info(f"**{pub}**: {p_data.get('data_derived_coverage_theme')}")
+            elif articles:
+                st.caption(f"Retrieved **{len(articles)}** matching documents")
+                for a in articles:
+                    sent = a.get("sentiment") or "Neutral"
+                    sent_cls = "badge-green" if sent == "Positive" else ("badge-red" if sent == "Negative" else "badge-muted")
+                    st.markdown(f"""
+                        <div class="card-box">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <span class="badge badge-cyan">{a.get('source','Unknown')}</span>
+                                    <span class="badge badge-purple" style="margin-left:4px;">{a.get('category','General')}</span>
+                                </div>
+                                <span class="badge {sent_cls}">{sent}</span>
                             </div>
-                            <span class="badge {sent_cls}">{sent}</span>
+                            <div style="font-size:14.5px; font-weight:700; margin:6px 0;">
+                                <a href="{a.get('link','#')}" target="_blank" style="color:{COLORS['cyan']}; text-decoration:none;">{a.get('headline', a.get('title','Untitled'))}</a>
+                            </div>
+                            <div style="font-size:12.5px; color:{COLORS['muted']};">{a.get('summary','No summary available.')}</div>
                         </div>
-                    </div>
-                """, unsafe_allow_html=True)
-
-    with c_col:
-        st.markdown('<div class="section-title">ANALYTICS DISTRIBUTION</div>', unsafe_allow_html=True)
-        t_src, t_cat, t_sent = st.tabs(["Top Sources", "Categories", "Sentiment Breakdown"])
-
-        with t_src:
-            if sources_dict:
-                df_src = pd.DataFrame(list(sources_dict.items()), columns=["Source", "Articles"]).sort_values("Articles")
-                total_src_art = df_src["Articles"].sum() or 1
-                top_src_name = df_src.iloc[-1]["Source"] if len(df_src) > 0 else "Unknown"
-                top_src_count = df_src.iloc[-1]["Articles"] if len(df_src) > 0 else 0
-                top_src_pct = (top_src_count / total_src_art) * 100
-
-                fig_src = px.bar(
-                    df_src, x="Articles", y="Source", orientation="h",
-                    color="Source",
-                    color_discrete_sequence=[COLORS["cyan"], COLORS["blue"], COLORS["purple"], COLORS["green"]],
-                    text="Articles"
-                )
-                fig_src.update_traces(
-                    texttemplate='%{text:,}',
-                    textposition='outside',
-                    marker_line_color='rgba(255,255,255,0.1)',
-                    marker_line_width=1
-                )
-                fig_src.update_layout(showlegend=False, xaxis_title="", yaxis_title="")
-                st.plotly_chart(apply_plotly_dark_theme(fig_src, height=210), use_container_width=True)
-
-                st.markdown(f"""
-                    <div style="background:rgba(6,182,212,0.08); border:1px solid rgba(6,182,212,0.25); border-radius:6px; padding:8px 12px; font-size:11.5px; color:{COLORS['text']};">
-                        💡 <b>Source Insight:</b> <b>{top_src_name}</b> is the leading provider with <b>{fmt_num(top_src_count)}</b> articles (<b>{top_src_pct:.1f}%</b> volume share across publishers).
-                    </div>
-                """, unsafe_allow_html=True)
-            else:
-                render_empty_box("No source distribution data available.")
-
-        with t_cat:
-            cats = first_present(metrics_res, ["categories", "category_distribution", "top_categories"], {}) or {}
-            if cats:
-                df_cat = pd.DataFrame(list(cats.items()), columns=["Category", "Count"])
-                sorted_cat = df_cat.sort_values("Count", ascending=False)
-                top_cat = sorted_cat.iloc[0]["Category"] if len(sorted_cat) > 0 else "General"
-                top_cat_cnt = sorted_cat.iloc[0]["Count"] if len(sorted_cat) > 0 else 0
-                top_cat_pct = (top_cat_cnt / df_cat["Count"].sum() * 100) if df_cat["Count"].sum() > 0 else 0
-
-                fig_cat = px.pie(
-                    df_cat, values="Count", names="Category", hole=0.55,
-                    color_discrete_sequence=[COLORS["blue"], COLORS["cyan"], COLORS["purple"], COLORS["green"], COLORS["orange"], COLORS["red"]]
-                )
-                fig_cat.update_traces(
-                    textposition='inside',
-                    textinfo='percent',
-                    insidetextorientation='horizontal',
-                    hoverinfo='label+value+percent'
-                )
-                st.plotly_chart(apply_plotly_dark_theme(fig_cat, height=210), use_container_width=True)
-
-                st.markdown(f"""
-                    <div style="background:rgba(139,92,246,0.08); border:1px solid rgba(139,92,246,0.25); border-radius:6px; padding:8px 12px; font-size:11.5px; color:{COLORS['text']};">
-                        💡 <b>Category Insight:</b> <b>{top_cat}</b> makes up <b>{top_cat_pct:.1f}%</b> of incoming raw feed articles. Real-time NLP classifiers categorize sub-topics into Business, Tech, Politics & World.
-                    </div>
-                """, unsafe_allow_html=True)
-            else:
-                render_empty_box("No category distribution data available.")
-
-        with t_sent:
-            sents = first_present(metrics_res, ["sentiment", "sentiment_distribution"], {}) or {}
-            if sents:
-                df_sent = pd.DataFrame(list(sents.items()), columns=["Sentiment", "Count"])
-                total_sent = df_sent["Count"].sum() or 1
-                neu_cnt = df_sent[df_sent["Sentiment"] == "Neutral"]["Count"].sum() if len(df_sent[df_sent["Sentiment"] == "Neutral"]) > 0 else 0
-                pos_cnt = df_sent[df_sent["Sentiment"] == "Positive"]["Count"].sum() if len(df_sent[df_sent["Sentiment"] == "Positive"]) > 0 else 0
-                neg_cnt = df_sent[df_sent["Sentiment"] == "Negative"]["Count"].sum() if len(df_sent[df_sent["Sentiment"] == "Negative"]) > 0 else 0
-
-                fig_sent = px.pie(
-                    df_sent, values="Count", names="Sentiment", hole=0.55,
-                    color="Sentiment", color_discrete_map=SENTIMENT_COLOR
-                )
-                fig_sent.update_traces(
-                    textposition='inside',
-                    textinfo='percent',
-                    hoverinfo='label+value+percent'
-                )
-                st.plotly_chart(apply_plotly_dark_theme(fig_sent, height=210), use_container_width=True)
-
-                st.markdown(f"""
-                    <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.25); border-radius:6px; padding:8px 12px; font-size:11.5px; color:{COLORS['text']};">
-                        💡 <b>Sentiment Insight:</b> <b>{(neu_cnt/total_sent*100):.1f}%</b> objective neutral reporting, with <b>{(pos_cnt/total_sent*100):.1f}%</b> positive market trends & <b>{(neg_cnt/total_sent*100):.1f}%</b> negative anomaly alerts.
-                    </div>
-                """, unsafe_allow_html=True)
-            else:
-                render_empty_box("No sentiment overview data available.")
+                    """, unsafe_allow_html=True)
 
 
 # =====================================================
-# PAGE 2 — LIVE NEWS FEED
+# PAGE 3 — LIVE FEED & DATE EXPLORER
 # =====================================================
-elif page == "Live News Feed":
-    render_header("LIVE NEWS FEED & FILTERING", "Inspect incoming articles with multi-parameter filter controls")
+elif page == "Live Feed & Date Explorer":
+    render_header("DATE-WISE NEWS EXPLORER & LIVE FEED", "Filter news by preset date ranges or pick custom dates (e.g. Aug 1 → Aug 7)")
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
+    d_col1, d_col2, d_col3, d_col4 = st.columns(4)
+    with d_col1:
+        date_preset = st.selectbox("Date Selector", ["Today", "Yesterday", "Last 7 Days", "Last 30 Days", "This Month", "Custom Date Range"])
+    with d_col2:
         sel_source = st.selectbox("Filter Source", ["All Sources", "Economic Times", "The Hindu", "Indian Express", "Hindustan Times"])
-    with c2:
-        sel_cat = st.selectbox("Filter Category", ["All Categories", "Business", "Technology", "Politics", "Sports", "World", "General"])
-    with c3:
+    with d_col3:
+        sel_cat = st.selectbox("Filter Category", ["All Categories"] + DEFAULT_CATEGORIES)
+    with d_col4:
         sel_sent = st.selectbox("Filter Sentiment", ["All Sentiments", "Positive", "Neutral", "Negative"])
 
-    feed_params = {"limit": 50}
+    now_date = datetime.now()
+    start_d, end_d = None, None
+
+    if date_preset == "Today":
+        start_d = now_date.strftime("%Y-%m-%d")
+        end_d = now_date.strftime("%Y-%m-%d")
+    elif date_preset == "Yesterday":
+        yest = now_date - timedelta(days=1)
+        start_d = yest.strftime("%Y-%m-%d")
+        end_d = yest.strftime("%Y-%m-%d")
+    elif date_preset == "Last 7 Days":
+        start_d = (now_date - timedelta(days=7)).strftime("%Y-%m-%d")
+        end_d = now_date.strftime("%Y-%m-%d")
+    elif date_preset == "Last 30 Days":
+        start_d = (now_date - timedelta(days=30)).strftime("%Y-%m-%d")
+        end_d = now_date.strftime("%Y-%m-%d")
+    elif date_preset == "This Month":
+        start_d = now_date.replace(day=1).strftime("%Y-%m-%d")
+        end_d = now_date.strftime("%Y-%m-%d")
+    elif date_preset == "Custom Date Range":
+        c_start, c_end = st.columns(2)
+        with c_start:
+            custom_start = st.date_input("Start Date", value=now_date - timedelta(days=7))
+            start_d = custom_start.strftime("%Y-%m-%d")
+        with c_end:
+            custom_end = st.date_input("End Date", value=now_date)
+            end_d = custom_end.strftime("%Y-%m-%d")
+
+    ex_params = {}
+    if start_d:
+        ex_params["start_date"] = start_d
+    if end_d:
+        ex_params["end_date"] = end_d
     if sel_source != "All Sources":
-        feed_params["source"] = sel_source
+        ex_params["source"] = sel_source
     if sel_cat != "All Categories":
-        feed_params["category"] = sel_cat
+        ex_params["category"] = sel_cat
     if sel_sent != "All Sentiments":
-        feed_params["sentiment"] = sel_sent
+        ex_params["sentiment"] = sel_sent
 
-    feed_res, feed_ok = fetch_api("/api/live-feed", params=feed_params)
-    if not feed_ok:
-        render_unavailable_box("Live News Feed")
+    exp_res, exp_ok = fetch_api("/api/news/explorer", params=ex_params)
+    if not exp_ok:
+        render_unavailable_box("Date Explorer")
     else:
-        articles = [a for a in (first_present(feed_res, ["articles"], []) or []) if isinstance(a, dict)]
+        st.markdown(f"#### Period Summary ({exp_res.get('start_date')} to {exp_res.get('end_date')}) — **{exp_res.get('total_articles',0)}** Articles")
         
-        st.caption(f"Retrieved **{len(articles)}** matching articles from 20,440+ corpus documents")
-
+        articles = exp_res.get("articles", [])
         if not articles:
-            st.warning("💡 **No articles matched all 4 filter conditions simultaneously.** Try broadening your search (e.g. setting Category to 'All Categories' or Sentiment to 'All Sentiments').")
-            render_empty_box("No articles match the current active filter combination.")
+            render_empty_box("No articles indexed for this date selection.")
         else:
             for a in articles:
                 sent = a.get("sentiment") or "Neutral"
@@ -626,7 +567,178 @@ elif page == "Live News Feed":
 
 
 # =====================================================
-# PAGE 3 — SEARCH WORKSPACE
+# PAGE 4 — MONTHLY INTELLIGENCE
+# =====================================================
+elif page == "Monthly Intelligence":
+    render_header("MONTHLY NEWS INTELLIGENCE", "Monthly archive timelines, top stories, and emerging category trends")
+
+    m_col1, m_col2 = st.columns(2)
+    with m_col1:
+        sel_year = st.selectbox("Select Year", [2026, 2025])
+    with m_col2:
+        sel_month = st.selectbox("Select Month", ["August", "July", "June", "May", "April", "March", "February", "January"])
+    
+    month_num_map = {"January": 1, "February": 2, "March": 3, "April": 4, "May": 5, "June": 6, "July": 7, "August": 8}
+    m_num = month_num_map[sel_month]
+
+    m_res, m_ok = fetch_api("/api/news/monthly", params={"year": sel_year, "month": m_num})
+    if not m_ok:
+        render_unavailable_box("Monthly News Intelligence")
+    else:
+        st.markdown(f"### {m_res.get('month_name','Monthly Report')} Overview")
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Monthly News", fmt_num(m_res.get("total_articles")))
+        c2.metric("Most Active Category", m_res.get("most_active_category","--"))
+        c3.metric("Top Emerging Keyword", m_res.get("most_emerging_keyword","--"))
+
+        st.markdown("---")
+        st.markdown("#### Top Stories of the Month")
+        for s in m_res.get("top_stories", []):
+            st.markdown(f"""
+                <div class="card-box">
+                    <div style="font-weight:700; font-size:14px; color:{COLORS['cyan']};">[{s.get('date')}] {s.get('title')}</div>
+                    <div style="font-size:11.5px; color:{COLORS['muted']}; margin:3px 0;">Source: {s.get('source')} · Category: {s.get('category')}</div>
+                    <div style="font-size:12.5px;">{s.get('summary')}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown("#### Monthly Timeline Breakdown")
+        t_df = pd.DataFrame(m_res.get("monthly_timeline", []))
+        if not t_df.empty:
+            st.dataframe(t_df, use_container_width=True, hide_index=True)
+
+
+# =====================================================
+# PAGE 5 — 4-NEWSPAPER COMPARISON
+# =====================================================
+elif page == "4-Newspaper Comparison":
+    render_header("4-NEWSPAPER TOPIC COMPARISON", "Compare coverage of the SAME topic across Economic Times, The Hindu, Indian Express & Hindustan Times")
+
+    topic_query = st.text_input("Enter Topic to Compare", value="India economy", placeholder="e.g. India economy, RBI, elections...")
+
+    if topic_query.strip():
+        comp_res, comp_ok = fetch_api("/api/news/compare-publishers", params={"topic": topic_query.strip()})
+        if not comp_ok:
+            render_unavailable_box("4-Newspaper Comparison")
+        else:
+            publishers = comp_res.get("publishers", {})
+            
+            p_cols = st.columns(4)
+            for idx, pub in enumerate(TARGET_SOURCES):
+                p_data = publishers.get(pub, {})
+                with p_cols[idx]:
+                    st.markdown(f"""
+                        <div class="card-box" style="height:100%;">
+                            <div style="font-weight:800; font-size:14px; color:{COLORS['cyan']}; border-bottom:1px solid {COLORS['card_border']}; padding-bottom:6px; margin-bottom:8px;">{pub}</div>
+                            <div style="font-size:11px; color:{COLORS['muted']};">Volume: <b>{p_data.get('total_coverage_volume',0)} articles</b></div>
+                            <div style="font-size:11px; color:{COLORS['muted']};">Tone: <b>{p_data.get('top_sentiment','Neutral')}</b></div>
+                            <div style="font-size:11.5px; font-weight:600; color:{COLORS['orange']}; margin-top:6px;">{p_data.get('data_derived_coverage_theme','--')}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+                    for art in p_data.get("sample_articles", []):
+                        with st.expander(art.get("headline","Untitled")[:35] + "..."):
+                            st.write(art.get("summary"))
+                            if art.get("link") and art.get("link") != "#":
+                                st.markdown(f"[Open Link →]({art.get('link')})")
+
+            st.markdown("---")
+            st.markdown(f"**Cross-Publisher Signal Summary:** {comp_res.get('cross_source_summary')}")
+
+
+# =====================================================
+# PAGE 6 — CURRENT AFFAIRS & DEVELOPING
+# =====================================================
+elif page == "Current Affairs & Developing":
+    render_header("CURRENT AFFAIRS & DEVELOPING STORIES", "Track ongoing developing news, story timelines, and 'What Happened Next?'")
+
+    t_ca, t_dev, t_time = st.tabs(["Current Affairs Center", "Developing Stories Tracker", "Story Evolution Timeline"])
+
+    with t_ca:
+        st.markdown("#### Current Affairs Center (Major Domains)")
+        ca_cat = st.selectbox("Select Domain", ["Breaking Now", "Top Developments", "National", "International", "Business", "Technology", "Sports", "Science", "Market"])
+        ca_res, ca_ok = fetch_api("/api/live-feed", params={"limit": 10})
+        if ca_ok:
+            for a in (ca_res.get("articles", []) or [])[:6]:
+                st.markdown(f"""
+                    <div class="card-box">
+                        <div style="font-weight:700; color:#FFFFFF;">[{a.get('source')}] {a.get('title')}</div>
+                        <div style="font-size:12px; color:{COLORS['muted']}; margin-top:4px;">{a.get('summary')}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+    with t_dev:
+        st.markdown("#### Developing Stories Tracker")
+        dev_res, dev_ok = fetch_api("/api/news/developing")
+        if not dev_ok:
+            render_unavailable_box("Developing Stories Tracker")
+        else:
+            dev_stories = dev_res.get("developing_stories", [])
+            for dev in dev_stories:
+                st.markdown(f"""
+                    <div class="card-box" style="border-left:4px solid {COLORS['orange']};">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-weight:700; font-size:14px; color:#FFFFFF;">{dev.get('story_topic')}</span>
+                            <span class="badge badge-orange">{dev.get('status')}</span>
+                        </div>
+                        <div style="font-size:12px; color:{COLORS['muted']}; margin-top:6px;">
+                            Latest Headline: <b>{dev.get('latest_headline')}</b><br>
+                            Updates Count: <b>{dev.get('update_count')}</b> · Sources: {', '.join(dev.get('sources_involved',[]))}
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+    with t_time:
+        st.markdown("#### Story Evolution Timeline ('What Happened Next?')")
+        t_topic = st.text_input("Enter Topic or Event for Timeline", value="Market")
+        time_res, time_ok = fetch_api("/api/news/timeline", params={"topic": t_topic})
+        if time_ok:
+            events = time_res.get("timeline", [])
+            if not events:
+                render_empty_box("No verified follow-up coverage found in the indexed data.")
+            else:
+                for ev in events:
+                    st.markdown(f"""
+                        <div class="card-box" style="border-left:4px solid {COLORS['cyan']};">
+                            <span class="badge badge-cyan">{ev.get('stage_label')}</span>
+                            <span style="font-size:11px; color:{COLORS['muted']}; margin-left:8px;">{time_ago(ev.get('timestamp'))}</span>
+                            <div style="font-weight:700; font-size:14px; margin-top:6px;">[{ev.get('source')}] {ev.get('headline')}</div>
+                            <div style="font-size:12.5px; color:{COLORS['muted']}; margin-top:4px;">{ev.get('summary')}</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+
+# =====================================================
+# PAGE 7 — CATEGORY, KEYWORD & ENTITY DEEP-DIVE
+# =====================================================
+elif page == "Category, Keyword & Entity Deep-Dive":
+    render_header("CATEGORY, KEYWORD & ENTITY DEEP-DIVE", "Type any custom term, person, company, place, or domain for instant intelligence analytics...")
+
+    custom_term = st.text_input("Search any Keyword, Entity, or Category:", value="RBI", placeholder="e.g. RBI, Modi, stock market, cyber crime, IPL...")
+
+    if custom_term.strip():
+        k_res, k_ok = fetch_api("/api/news/keyword-intelligence", params={"q": custom_term.strip()})
+        if k_ok and k_res:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total Mentions", fmt_num(k_res.get("total_mentions")))
+            c2.metric("First Appearance", time_ago(k_res.get("first_appearance")))
+            c3.metric("Latest Appearance", time_ago(k_res.get("latest_appearance")))
+
+            st.markdown("---")
+            st.markdown("#### Sample Articles Mentioning Term")
+            for sa in k_res.get("sample_articles", []):
+                st.markdown(f"""
+                    <div class="card-box">
+                        <div style="font-weight:700; color:{COLORS['cyan']};">[{sa.get('source')}] {sa.get('headline')}</div>
+                        <div style="font-size:12px; color:{COLORS['muted']}; margin-top:4px;">{sa.get('summary')}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+
+# =====================================================
+# PAGE 8 — SEARCH WORKSPACE
 # =====================================================
 elif page == "Search Workspace":
     render_header("SEARCH WORKSPACE", "Hybrid RRF, lexical BM25, and 384-dimensional dense vector KNN search")
@@ -641,7 +753,7 @@ elif page == "Search Workspace":
             q = st.text_input("Enter query phrase", key=f"q_{mode}", placeholder="e.g. RBI inflation rate decision...")
             sc1, sc2, sc3 = st.columns(3)
             with sc1:
-                search_cat = st.selectbox("Category Filter", ["All", "Business", "Technology", "Politics", "Sports", "World"], key=f"cat_{mode}")
+                search_cat = st.selectbox("Category Filter", ["All"] + DEFAULT_CATEGORIES, key=f"cat_{mode}")
             with sc2:
                 search_sent = st.selectbox("Sentiment Filter", ["All", "Positive", "Neutral", "Negative"], key=f"sent_{mode}")
             with sc3:
@@ -679,115 +791,23 @@ elif page == "Search Workspace":
 
 
 # =====================================================
-# PAGE 4 — TEMPORAL ANALYTICS
+# PAGE 9 — AI ANALYST (RAG)
 # =====================================================
-elif page == "Temporal Analytics":
-    render_header("TEMPORAL ANALYTICS & TREND INTELLIGENCE", "Sliding window volume trends, z-score volume spike alerts, and cross-source signal discovery")
-
-    st.markdown("""
-    <div style="background:rgba(59,130,246,0.08); border-left:4px solid #3B82F6; padding:12px 14px; border-radius:6px; font-size:12.5px; margin-bottom:16px;">
-        <b>Analytics Logic & Context:</b><br>
-        • <b>Volume Trends:</b> Measures article generation rate over sliding windows (15m, 1h, 6h, 24h, 7d).<br>
-        • <b>Volume Spikes:</b> Flags categories where current hourly volume exceeds historical baseline average volume by 2.0x+.<br>
-        • <b>Cross-Source Signals:</b> Identifies breaking news topics appearing across 2 or more distinct publishers simultaneously.
-    </div>
-    """, unsafe_allow_html=True)
-
-    time_win = st.select_slider("Select Sliding Window", options=["15m", "1h", "6h", "24h", "7d"], value="24h")
-
-    t1, t2, t3, t4 = st.tabs(["Source Trends", "Category Trends", "Sentiment Timeline", "Spikes & Signals"])
-
-    with t1:
-        src_res, src_ok = fetch_api("/api/analytics/source-trends", params={"window": time_win, "bucket": "1h"})
-        src_data = first_present(src_res, ["data", "timeline", "items"], []) if src_ok else []
-        if not src_ok or not src_data:
-            render_empty_box("No source trend data found for this window.")
-        else:
-            try:
-                df = pd.DataFrame(src_data)
-                time_col = "timestamp" if "timestamp" in df.columns else ("time" if "time" in df.columns else df.columns[0])
-                df_m = df.melt(id_vars=[time_col], var_name="source", value_name="count")
-                fig = px.line(df_m, x=time_col, y="count", color="source", color_discrete_sequence=[COLORS["cyan"], COLORS["blue"], COLORS["purple"], COLORS["green"]])
-                st.plotly_chart(apply_plotly_dark_theme(fig, height=320), use_container_width=True)
-            except Exception:
-                render_unavailable_box("Source Trends")
-
-    with t2:
-        cat_res, cat_ok = fetch_api("/api/analytics/category-trends", params={"window": time_win, "bucket": "1h"})
-        cat_data = first_present(cat_res, ["data", "timeline", "items"], []) if cat_ok else []
-        if not cat_ok or not cat_data:
-            render_empty_box("No category trend data found for this window.")
-        else:
-            try:
-                df = pd.DataFrame(cat_data)
-                time_col = "timestamp" if "timestamp" in df.columns else ("time" if "time" in df.columns else df.columns[0])
-                df_m = df.melt(id_vars=[time_col], var_name="category", value_name="count")
-                fig = px.area(df_m, x=time_col, y="count", color="category")
-                st.plotly_chart(apply_plotly_dark_theme(fig, height=320), use_container_width=True)
-            except Exception:
-                render_unavailable_box("Category Trends")
-
-    with t3:
-        sent_res, sent_ok = fetch_api("/api/analytics/sentiment-trends", params={"window": time_win, "bucket": "1h"})
-        sent_data = first_present(sent_res, ["data", "timeline", "items"], []) if sent_ok else []
-        if not sent_ok or not sent_data:
-            render_empty_box("No sentiment trend data found for this window.")
-        else:
-            try:
-                df = pd.DataFrame(sent_data)
-                time_col = "timestamp" if "timestamp" in df.columns else ("time" if "time" in df.columns else df.columns[0])
-                df_m = df.melt(id_vars=[time_col], var_name="sentiment", value_name="count")
-                fig = px.line(df_m, x=time_col, y="count", color="sentiment", color_discrete_map=SENTIMENT_COLOR)
-                st.plotly_chart(apply_plotly_dark_theme(fig, height=320), use_container_width=True)
-            except Exception:
-                render_unavailable_box("Sentiment Timeline")
-
-    with t4:
-        sp_res, sp_ok = fetch_api("/api/analytics/spikes")
-        spikes = first_present(sp_res, ["spikes"], []) if sp_ok else []
-        if spikes:
-            for sp in spikes:
-                if isinstance(sp, dict):
-                    st.warning(f"⚠️ Activity Spike in **{sp.get('category','General')}**: Current volume **{fmt_num(sp.get('current_volume'))} art/hr** vs baseline **{fmt_num(sp.get('baseline_volume'))} art/hr** (Multiplier: {sp.get('multiplier',1):.2f}x)")
-        else:
-            st.success("🟢 Volume activity status normal. No anomalous spikes detected.")
-
-        st.markdown("---")
-        st.markdown("#### Emerging Keywords & Named Entities Velocity")
-        k_col, e_col = st.columns(2)
-        with k_col:
-            kw_res, kw_ok = fetch_api("/api/analytics/keywords")
-            kws = first_present(kw_res, ["keywords"], []) if kw_ok else []
-            if kws:
-                st.dataframe(keywords_to_display_df(kws), use_container_width=True, hide_index=True)
-            else:
-                render_empty_box("No emerging keyword velocity data.")
-
-        with e_col:
-            ent_res, ent_ok = fetch_api("/api/analytics/entities")
-            ents = first_present(ent_res, ["entities"], []) if ent_ok else []
-            if ents:
-                st.dataframe(entities_to_display_df(ents), use_container_width=True, hide_index=True)
-            else:
-                render_empty_box("No emerging entity velocity data.")
-
-
-# =====================================================
-# PAGE 5 — AI ANALYST (RAG)
-# =====================================================
-elif page == "AI Analyst (RAG)":
+elif page == "AI News Analyst (RAG)":
     render_header("AI NEWS ANALYST", "Grounded Agentic RAG assistant with intent routing and citation provenance")
 
     st.info("💡 **Analytics Logic Context:** The AI Analyst classifies user intent, queries Elasticsearch vector & BM25 indices deterministically, synthesizes a grounded answer, and lists exact article citations to prevent AI hallucinations.")
 
-    b1, b2, b3 = st.columns(3)
+    b1, b2, b3, b4 = st.columns(4)
     user_q = st.session_state.get("ai_q", "")
-    if b1.button("What's trending in Indian markets today?"):
-        user_q = "What's trending in Indian markets today?"
-    if b2.button("What major news volume spikes occurred today?"):
-        user_q = "What major news volume spikes occurred today?"
-    if b3.button("What topics are reported across multiple sources?"):
-        user_q = "What topics are reported across multiple sources?"
+    if b1.button("What are the top 10 news stories today?"):
+        user_q = "What are the top 10 news stories today?"
+    if b2.button("Compare all 4 newspapers on India's economy"):
+        user_q = "Compare all 4 newspapers on India's economy"
+    if b3.button("What stories are currently developing?"):
+        user_q = "What stories are currently developing?"
+    if b4.button("Show me crime news from August 1 to August 7"):
+        user_q = "Show me crime news from August 1 to August 7"
 
     input_q = st.text_area("Enter question for AI Analyst", value=user_q, placeholder="e.g. Compare coverage of market trends across Economic Times and The Hindu...")
 
@@ -803,7 +823,7 @@ elif page == "AI Analyst (RAG)":
             if answer:
                 st.info(answer)
             else:
-                st.warning("Insufficient evidence was found in the indexed corpus to answer this query.")
+                st.warning("Insufficient evidence was found in the indexed corpus to answer this question.")
 
             insights = first_present(rag_res, ["insights"], []) or []
             if insights:
@@ -835,45 +855,7 @@ elif page == "AI Analyst (RAG)":
 
 
 # =====================================================
-# PAGE 6 — ARTICLE INSPECTOR
-# =====================================================
-elif page == "Article Inspector":
-    render_header("ARTICLE INSPECTOR", "Inspect raw documents, extracted entities, NLP metadata, and pipeline lease statuses")
-
-    target_id = st.text_input("Enter Article ID or Article Link URL")
-    if target_id.strip():
-        art_res, art_ok = fetch_api(f"/api/articles/{target_id.strip()}")
-        if not art_ok or not art_res:
-            st.error("Article not found in database.")
-        else:
-            st.markdown(f"### {art_res.get('title','Untitled Article')}")
-            st.caption(f"Source: **{art_res.get('source','--')}** · Published: **{time_ago(art_res.get('published_date'))}**")
-
-            tabs = st.tabs(["Summary", "Full Content", "Keywords", "Entities", "Source Link", "Pipeline Metadata"])
-            with tabs[0]:
-                st.write(art_res.get("summary") or "No summary extracted.")
-            with tabs[1]:
-                st.text_area("Cleaned Text Body", art_res.get("clean_content") or "No content available.", height=250)
-            with tabs[2]:
-                kws = art_res.get("keywords") or []
-                st.write(", ".join(kws) if kws else "No keywords extracted.")
-            with tabs[3]:
-                ents = art_res.get("entities") or []
-                if ents:
-                    st.dataframe(entities_to_display_df(ents), use_container_width=True, hide_index=True)
-                else:
-                    st.caption("No named entities extracted.")
-            with tabs[4]:
-                if art_res.get("link") and art_res.get("link") != "#":
-                    st.markdown(f"[Open Original Publisher Link →]({art_res.get('link')})")
-                else:
-                    st.caption("No valid URL available.")
-            with tabs[5]:
-                st.json(art_res.get("processing") or {})
-
-
-# =====================================================
-# PAGE 7 — SYSTEM HEALTH
+# PAGE 10 — SYSTEM HEALTH
 # =====================================================
 elif page == "System Health":
     render_header("SYSTEM HEALTH & INFRASTRUCTURE MONITORING", "Node connection states, database health, and pipeline queue metrics")
