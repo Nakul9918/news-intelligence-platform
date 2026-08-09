@@ -587,25 +587,13 @@ if page == "Command Center":
 elif page == "Live News Feed":
     render_header("LIVE NEWS FEED & FILTERING", "Inspect incoming articles with multi-parameter filter controls")
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     with c1:
         sel_source = st.selectbox("Filter Source", ["All Sources", "Economic Times", "The Hindu", "Indian Express", "Hindustan Times"])
     with c2:
         sel_cat = st.selectbox("Filter Category", ["All Categories", "Business", "Technology", "Politics", "Sports", "World", "General"])
     with c3:
         sel_sent = st.selectbox("Filter Sentiment", ["All Sentiments", "Positive", "Neutral", "Negative"])
-    with c4:
-        search_kw = st.text_input(
-            "Headline Keyword Search 🔍",
-            placeholder="e.g. RBI, inflation, Kerala, stocks...",
-            help="Type any word or phrase (e.g., company, leader, city) to filter article headlines live."
-        )
-
-    st.markdown(f"""
-        <div style="background:rgba(6,182,212,0.06); border:1px solid rgba(6,182,212,0.2); border-radius:6px; padding:8px 12px; font-size:12px; margin: 6px 0 14px 0; color:{COLORS['text']};">
-            💡 <b>How Search Works:</b> Type any topic keyword (e.g., <i>'market'</i>, <i>'railway'</i>, <i>'elections'</i>, <i>'Kerala'</i>) into <b>Headline Keyword Search</b> to filter article titles in real time.
-        </div>
-    """, unsafe_allow_html=True)
 
     feed_params = {"limit": 50}
     if sel_source != "All Sources":
@@ -614,8 +602,6 @@ elif page == "Live News Feed":
         feed_params["category"] = sel_cat
     if sel_sent != "All Sentiments":
         feed_params["sentiment"] = sel_sent
-    if search_kw.strip():
-        feed_params["q"] = search_kw.strip()
 
     feed_res, feed_ok = fetch_api("/api/live-feed", params=feed_params)
     if not feed_ok:
