@@ -200,24 +200,24 @@ def get_live_feed(
     if source and source != "All Sources":
         and_conditions.append({
             "$or": [
-                {"source": source},
-                {"source.name": source}
+                {"source": {"$regex": f"^{source}$", "$options": "i"}},
+                {"source.name": {"$regex": f"^{source}$", "$options": "i"}}
             ]
         })
 
     if category and category != "All Categories":
         and_conditions.append({
             "$or": [
-                {"category": category},
-                {"category.label": category}
+                {"category": {"$regex": f"^{category}$", "$options": "i"}},
+                {"category.label": {"$regex": f"^{category}$", "$options": "i"}}
             ]
         })
 
     if sentiment and sentiment != "All Sentiments":
         and_conditions.append({
             "$or": [
-                {"sentiment": sentiment},
-                {"sentiment.label": sentiment}
+                {"sentiment": {"$regex": f"^{sentiment}$", "$options": "i"}},
+                {"sentiment.label": {"$regex": f"^{sentiment}$", "$options": "i"}}
             ]
         })
 
