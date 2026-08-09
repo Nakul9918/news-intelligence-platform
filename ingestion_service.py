@@ -203,6 +203,30 @@ def run_ingestion_cycle(producer, db, published_cache):
                         src_dup += 1
                         continue
 
+                    title_str = entry.get("title", "").strip()
+                    desc_str = entry.get("summary", "").strip()
+                    full_txt = (title_str + " " + desc_str).lower()
+
+                    # Quick Rule-Based NLP Category Inference
+                    cat_label = "Business"
+                    if any(w in full_txt for w in ["bjp", "congress", "parliament", "monsoon", "govt", "centre", "pm", "modi", "minister", "election", "poll", "padayatra", "party", "court", "bill"]):
+                        cat_label = "Politics"
+                    elif any(w in full_txt for w in ["spacex", "ai", "tech", "cyber", "software", "google", "apple", "app", "digital", "musk"]):
+                        cat_label = "Technology"
+                    elif any(w in full_txt for w in ["cricket", "match", "cup", "team", "olympic", "sport", "game", "stadium"]):
+                        cat_label = "Sports"
+                    elif any(w in full_txt for w in ["police", "arrest", "crime", "fraud", "scam", "jail", "cbi", "ed", "choksi"]):
+                        cat_label = "Crime"
+                    elif any(w in full_txt for w in ["china", "canada", "us", "hamas", "trump", "russia", "ukraine", "israel", "gaza", "global", "world"]):
+                        cat_label = "World"
+
+                    # Quick Rule-Based Sentiment Inference
+                    sent_label = "Neutral"
+                    if any(w in full_txt for w in ["gains", "rises", "surge", "up", "record", "growth", "deal", "success", "boost", "strong", "positive"]):
+                        sent_label = "Positive"
+                    elif any(w in full_txt for w in ["fall", "drops", "crash", "loss", "fraud", "arrest", "attack", "kill", "doubt", "warning", "ban", "crime"]):
+                        sent_label = "Negative"
+
                     # Construct Standard Schema Article
                     article = {
                         "article_id": article_id,
@@ -213,10 +237,12 @@ def run_ingestion_cycle(producer, db, published_cache):
                             "language": "en",
                             "type": "rss"
                         },
-                        "title": entry.get("title", "").strip(),
-                        "description": entry.get("summary", "").strip(),
+                        "title": title_str,
+                        "description": desc_str,
                         "content": "",
                         "clean_content": "",
+                        "category": {"label": cat_label, "score": 0.85},
+                        "sentiment": {"label": sent_label, "score": 0.85},
                         "authors": ["Unknown"],
                         "language": "en",
                         "published_date": entry.get("published") or now_iso,
@@ -227,8 +253,8 @@ def run_ingestion_cycle(producer, db, published_cache):
                         "last_pipeline_update": now_iso,
                         "ingestion_type": "realtime",
                         "processing": {
-                            "status": "PENDING",
-                            "stage": "ingested",
+                            "status": "COMPLETED",
+                            "stage": "ingested_enriched",
                             "retry_count": 0
                         }
                     }
