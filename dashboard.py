@@ -607,29 +607,29 @@ elif page == "Live News Feed":
         </div>
     """, unsafe_allow_html=True)
 
-    feed_res, feed_ok = fetch_api("/api/live-feed", params={"limit": 50})
+    feed_params = {"limit": 50}
+    if sel_source != "All Sources":
+        feed_params["source"] = sel_source
+    if sel_cat != "All Categories":
+        feed_params["category"] = sel_cat
+    if sel_sent != "All Sentiments":
+        feed_params["sentiment"] = sel_sent
+    if search_kw.strip():
+        feed_params["q"] = search_kw.strip()
+
+    feed_res, feed_ok = fetch_api("/api/live-feed", params=feed_params)
     if not feed_ok:
         render_unavailable_box("Live News Feed")
     else:
         articles = [a for a in (first_present(feed_res, ["articles"], []) or []) if isinstance(a, dict)]
-        filtered = []
-        for a in articles:
-            if sel_source != "All Sources" and a.get("source") != sel_source:
-                continue
-            if sel_cat != "All Categories" and a.get("category") != sel_cat:
-                continue
-            if sel_sent != "All Sentiments" and a.get("sentiment") != sel_sent:
-                continue
-            if search_kw and search_kw.lower() not in (a.get("title") or "").lower():
-                continue
-            filtered.append(a)
+        
+        st.caption(f"Retrieved **{len(articles)}** matching articles from 20,440+ corpus documents")
 
-        st.caption(f"Showing **{len(filtered)}** of **{len(articles)}** live ingested articles")
-
-        if not filtered:
-            render_empty_box("No articles match the current filter selection.")
+        if not articles:
+            st.warning("💡 **No articles matched all 4 filter conditions simultaneously.** Try broadening your search (e.g. setting Category to 'All Categories' or Sentiment to 'All Sentiments').")
+            render_empty_box("No articles match the current active filter combination.")
         else:
-            for a in filtered:
+            for a in articles:
                 sent = a.get("sentiment") or "Neutral"
                 sent_cls = "badge-green" if sent == "Positive" else ("badge-red" if sent == "Negative" else "badge-muted")
                 with st.expander(f"[{a.get('source','Unknown')}] {a.get('title','Untitled')}"):

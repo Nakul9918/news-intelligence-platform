@@ -182,9 +182,53 @@ def get_dashboard_metrics():
 
 @router.get("/api/live-feed")
 @router.get("/latest")
-def get_live_feed(limit: int = Query(20, ge=1, le=100)):
-    """Fetch latest incoming articles sorted by created_at descending."""
-    cursor = realtime_collection.find().sort("created_at", -1).limit(limit)
+def get_live_feed(
+    limit: int = Query(50, ge=1, le=100),
+    source: Optional[str] = None,
+    category: Optional[str] = None,
+    sentiment: Optional[str] = None,
+    q: Optional[str] = None
+):
+    """Fetch incoming articles sorted by created_at descending with optional filtering across full corpus."""
+    mongo_query = {}
+    and_conditions = []
+
+    if source and source != "All Sources":
+        and_conditions.append({
+            "$or": [
+                {"source": {"$regex": source, "$options": "i"}},
+                {"source.name": {"$regex": source, "$options": "i"}}
+            ]
+        })
+
+    if category and category != "All Categories":
+        and_conditions.append({
+            "$or": [
+                {"category": {"$regex": category, "$options": "i"}},
+                {"category.label": {"$regex": category, "$options": "i"}}
+            ]
+        })
+
+    if sentiment and sentiment != "All Sentiments":
+        and_conditions.append({
+            "$or": [
+                {"sentiment": {"$regex": sentiment, "$options": "i"}},
+                {"sentiment.label": {"$regex": sentiment, "$options": "i"}}
+            ]
+        })
+
+    if q and q.strip():
+        and_conditions.append({
+            "$or": [
+                {"title": {"$regex": q.strip(), "$options": "i"}},
+                {"clean_content": {"$regex": q.strip(), "$options": "i"}}
+            ]
+        })
+
+    if and_conditions:
+        mongo_query = {"$and": and_conditions}
+
+    cursor = realtime_collection.find(mongo_query).sort("created_at", -1).limit(limit)
     articles = [format_article_summary(doc) for doc in cursor]
     return {
         "count": len(articles),
