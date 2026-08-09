@@ -595,7 +595,17 @@ elif page == "Live News Feed":
     with c3:
         sel_sent = st.selectbox("Filter Sentiment", ["All Sentiments", "Positive", "Neutral", "Negative"])
     with c4:
-        search_kw = st.text_input("Headline Keyword Search", placeholder="Search in titles...")
+        search_kw = st.text_input(
+            "Headline Keyword Search 🔍",
+            placeholder="e.g. RBI, inflation, Kerala, stocks...",
+            help="Type any word or phrase (e.g., company, leader, city) to filter article headlines live."
+        )
+
+    st.markdown(f"""
+        <div style="background:rgba(6,182,212,0.06); border:1px solid rgba(6,182,212,0.2); border-radius:6px; padding:8px 12px; font-size:12px; margin: 6px 0 14px 0; color:{COLORS['text']};">
+            💡 <b>How Search Works:</b> Type any topic keyword (e.g., <i>'market'</i>, <i>'railway'</i>, <i>'elections'</i>, <i>'Kerala'</i>) into <b>Headline Keyword Search</b> to filter article titles in real time.
+        </div>
+    """, unsafe_allow_html=True)
 
     feed_res, feed_ok = fetch_api("/api/live-feed", params={"limit": 50})
     if not feed_ok:
