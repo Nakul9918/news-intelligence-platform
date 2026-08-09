@@ -1,7 +1,7 @@
 """
 =====================================================
 News Intelligence Command Center — Enterprise Dashboard
-Version : 16.0 (Enhanced Chart Visuals & Intelligent Analytical Insights)
+Version : 17.0 (Resolved Key Mismatches & Live Telemetry Volume Rendering)
 =====================================================
 """
 
@@ -431,24 +431,25 @@ if page == "Command Center":
 
     with col_right:
         st.markdown('<div class="section-title">24-HOUR ARTICLE VOLUME TREND</div>', unsafe_allow_html=True)
-        vol_res, vol_ok = fetch_api("/api/analytics/source-trends", params={"window": "24h", "bucket": "1h"})
-        vol_data = first_present(vol_res, ["timeline"], []) if vol_ok else []
+        vol_res, vol_ok = fetch_api("/api/analytics/volume", params={"window": "24h", "bucket": "1h"})
+        vol_data = first_present(vol_res, ["data", "timeline", "items"], []) if vol_ok else []
         if not vol_ok or not vol_data:
             render_empty_box("Volume telemetry data initializing...")
         else:
             try:
                 df_vol = pd.DataFrame(vol_data)
-                if "time" in df_vol.columns and "count" in df_vol.columns:
-                    df_vol = df_vol.groupby("time", as_index=False)["count"].sum().sort_values("time")
-                    fig = go.Figure()
-                    fig.add_trace(go.Scatter(
-                        x=df_vol["time"], y=df_vol["count"], mode="lines", fill="tozeroy",
-                        line=dict(color=COLORS["cyan"], width=2.5),
-                        fillcolor="rgba(6, 182, 212, 0.15)",
-                    ))
-                    st.plotly_chart(apply_plotly_dark_theme(fig, height=160), use_container_width=True)
-                else:
-                    render_empty_box("Volume data schema unrecognized.")
+                time_col = "timestamp" if "timestamp" in df_vol.columns else ("time" if "time" in df_vol.columns else df_vol.columns[0])
+                count_col = "count" if "count" in df_vol.columns else df_vol.columns[1]
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatter(
+                    x=df_vol[time_col], y=df_vol[count_col], mode="lines+markers", fill="tozeroy",
+                    line=dict(color=COLORS["cyan"], width=2.5),
+                    marker=dict(size=5, color=COLORS["cyan"]),
+                    fillcolor="rgba(6, 182, 212, 0.15)",
+                    hovertemplate="%{x}<br>Volume: <b>%{y} articles</b><extra></extra>"
+                ))
+                st.plotly_chart(apply_plotly_dark_theme(fig, height=160), use_container_width=True)
             except Exception:
                 render_unavailable_box("Volume Chart")
 
@@ -535,7 +536,6 @@ if page == "Command Center":
                     df_cat, values="Count", names="Category", hole=0.55,
                     color_discrete_sequence=[COLORS["blue"], COLORS["cyan"], COLORS["purple"], COLORS["green"], COLORS["orange"], COLORS["red"]]
                 )
-                # Position text INSIDE donut slices to eliminate messy overlapping callouts on tiny slices!
                 fig_cat.update_traces(
                     textposition='inside',
                     textinfo='percent',
@@ -565,7 +565,6 @@ if page == "Command Center":
                     df_sent, values="Count", names="Sentiment", hole=0.55,
                     color="Sentiment", color_discrete_map=SENTIMENT_COLOR
                 )
-                # Position text INSIDE donut slices to eliminate messy overlapping callout lines!
                 fig_sent.update_traces(
                     textposition='inside',
                     textinfo='percent',
@@ -704,39 +703,45 @@ elif page == "Temporal Analytics":
 
     with t1:
         src_res, src_ok = fetch_api("/api/analytics/source-trends", params={"window": time_win, "bucket": "1h"})
-        src_data = first_present(src_res, ["timeline"], []) if src_ok else []
+        src_data = first_present(src_res, ["data", "timeline", "items"], []) if src_ok else []
         if not src_ok or not src_data:
             render_empty_box("No source trend data found for this window.")
         else:
             try:
                 df = pd.DataFrame(src_data)
-                fig = px.line(df, x="time", y="count", color=df["source"] if "source" in df.columns else None, color_discrete_sequence=[COLORS["cyan"], COLORS["blue"], COLORS["purple"], COLORS["green"]])
+                time_col = "timestamp" if "timestamp" in df.columns else ("time" if "time" in df.columns else df.columns[0])
+                df_m = df.melt(id_vars=[time_col], var_name="source", value_name="count")
+                fig = px.line(df_m, x=time_col, y="count", color="source", color_discrete_sequence=[COLORS["cyan"], COLORS["blue"], COLORS["purple"], COLORS["green"]])
                 st.plotly_chart(apply_plotly_dark_theme(fig, height=320), use_container_width=True)
             except Exception:
                 render_unavailable_box("Source Trends")
 
     with t2:
         cat_res, cat_ok = fetch_api("/api/analytics/category-trends", params={"window": time_win, "bucket": "1h"})
-        cat_data = first_present(cat_res, ["timeline"], []) if cat_ok else []
+        cat_data = first_present(cat_res, ["data", "timeline", "items"], []) if cat_ok else []
         if not cat_ok or not cat_data:
             render_empty_box("No category trend data found for this window.")
         else:
             try:
                 df = pd.DataFrame(cat_data)
-                fig = px.area(df, x="time", y="count", color=df["category"] if "category" in df.columns else None)
+                time_col = "timestamp" if "timestamp" in df.columns else ("time" if "time" in df.columns else df.columns[0])
+                df_m = df.melt(id_vars=[time_col], var_name="category", value_name="count")
+                fig = px.area(df_m, x=time_col, y="count", color="category")
                 st.plotly_chart(apply_plotly_dark_theme(fig, height=320), use_container_width=True)
             except Exception:
                 render_unavailable_box("Category Trends")
 
     with t3:
         sent_res, sent_ok = fetch_api("/api/analytics/sentiment-trends", params={"window": time_win, "bucket": "1h"})
-        sent_data = first_present(sent_res, ["timeline"], []) if sent_ok else []
+        sent_data = first_present(sent_res, ["data", "timeline", "items"], []) if sent_ok else []
         if not sent_ok or not sent_data:
             render_empty_box("No sentiment trend data found for this window.")
         else:
             try:
                 df = pd.DataFrame(sent_data)
-                fig = px.line(df, x="time", y="count", color="sentiment" if "sentiment" in df.columns else None, color_discrete_map=SENTIMENT_COLOR)
+                time_col = "timestamp" if "timestamp" in df.columns else ("time" if "time" in df.columns else df.columns[0])
+                df_m = df.melt(id_vars=[time_col], var_name="sentiment", value_name="count")
+                fig = px.line(df_m, x=time_col, y="count", color="sentiment", color_discrete_map=SENTIMENT_COLOR)
                 st.plotly_chart(apply_plotly_dark_theme(fig, height=320), use_container_width=True)
             except Exception:
                 render_unavailable_box("Sentiment Timeline")
@@ -802,7 +807,7 @@ elif page == "AI Analyst (RAG)":
             if answer:
                 st.info(answer)
             else:
-                st.warning("Insufficient evidence was found in the indexed corpus to answer this question.")
+                st.warning("Insufficient evidence was found in the indexed corpus to answer this query.")
 
             insights = first_present(rag_res, ["insights"], []) or []
             if insights:
