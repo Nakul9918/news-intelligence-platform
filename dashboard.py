@@ -902,12 +902,7 @@ elif page == "03. TOP CURRENT STORIES":
     t10_res, t10_ok = fetch_api("/api/news/top10", params={"limit": 10})
     t10_articles = first_present(t10_res, ["articles"], []) if t10_ok else []
 
-    with st.expander("📐 Explainability — Ranking Formula"):
-        st.markdown("""
-            Top Current Stories are ranked using a transparent weighted scoring algorithm:
-            $$\\text{Score} = (\\text{Coverage Volume} \\times 0.4) + (\\text{Source Diversity} \\times 0.3) + \\left(\\frac{1}{1 + \\text{Age Hours}}\\right) \\times 0.3$$
-            *No subjective importance claims are made.*
-        """)
+
 
     if not t10_ok or not t10_articles:
         render_empty_box("Top stories analysis initializing...")
