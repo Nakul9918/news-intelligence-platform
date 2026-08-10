@@ -939,7 +939,7 @@ elif page == "04. TIME MACHINE":
 
     tm_col1, tm_col2, tm_col3 = st.columns(3)
     with tm_col1:
-        tm_mode = st.selectbox("Select Period Filter", ["Today", "Yesterday", "Last 7 Days", "Last 30 Days", "Month", "Custom Date Range"])
+        tm_mode = st.selectbox("Select Period Filter", ["Today", "Yesterday", "Last 2 Days", "Custom Date Range"])
     with tm_col2:
         tm_date = st.date_input("Start Date", value=datetime.today())
     with tm_col3:
@@ -1142,7 +1142,7 @@ elif page == "06. TRENDS & TEMPORAL":
     tc_col1, tc_col2, tc_col3 = st.columns([3, 2, 2])
     with tc_col1:
         st.markdown('<div style="font-size:11px; font-weight:700; color:#A0AABF; text-transform:uppercase; margin-bottom:4px;">TIME WINDOW PRESET</div>', unsafe_allow_html=True)
-        w_btn1, w_btn2, w_btn3, w_btn4, w_btn5 = st.columns(5)
+        w_btn1, w_btn2 = st.columns(2)
         
         if "temp_win" not in st.session_state:
             st.session_state["temp_win"] = "24h"
@@ -1151,17 +1151,8 @@ elif page == "06. TRENDS & TEMPORAL":
             if st.button("24 Hours", use_container_width=True):
                 st.session_state["temp_win"] = "24h"
         with w_btn2:
-            if st.button("7 Days", use_container_width=True):
-                st.session_state["temp_win"] = "7d"
-        with w_btn3:
-            if st.button("30 Days", use_container_width=True):
-                st.session_state["temp_win"] = "30d"
-        with w_btn4:
-            if st.button("3 Months", use_container_width=True):
-                st.session_state["temp_win"] = "3m"
-        with w_btn5:
-            if st.button("12 Months", use_container_width=True):
-                st.session_state["temp_win"] = "12m"
+            if st.button("48 Hours (2 Days)", use_container_width=True):
+                st.session_state["temp_win"] = "48h"
 
     active_win = st.session_state.get("temp_win", "24h")
 
@@ -1444,7 +1435,7 @@ elif page == "07. TOPIC & KEYWORD":
     # Multi-Faceted Filters Toolbar
     f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns(5)
     with f_col1:
-        date_filter = st.selectbox("Date Range", ["24 Hours", "7 Days", "30 Days", "3 Months", "All Time"], index=2)
+        date_filter = st.selectbox("Date Range", ["24 Hours", "48 Hours (2 Days)", "All Time"], index=0)
     with f_col2:
         source_filter = st.selectbox("News Source", ["All Sources", "Economic Times", "The Hindu", "Indian Express", "Hindustan Times"])
     with f_col3:
@@ -1459,7 +1450,7 @@ elif page == "07. TOPIC & KEYWORD":
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Execute Topic Investigation API
-    win_code = "24h" if date_filter == "24 Hours" else ("7d" if date_filter == "7 Days" else ("30d" if date_filter == "30 Days" else "3m"))
+    win_code = "24h" if date_filter == "24 Hours" else ("48h" if date_filter == "48 Hours (2 Days)" else "all")
     t_res, t_ok = fetch_api("/api/topic/investigate", params={"q": active_q, "window": win_code})
 
     if not t_ok or not t_res.get("sample_articles"):
