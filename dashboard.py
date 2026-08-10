@@ -2562,46 +2562,59 @@ elif page == "11. SEARCH + AI ASSISTANT":
         st.markdown('<div class="section-title">🤖 GROUNDED AI NEWS ANALYST (RAG)</div>', unsafe_allow_html=True)
         rag_input = st.text_area("Ask a question about the retrieved news:", value=active_query, placeholder="e.g. What are the top 10 news stories today? Compare all 4 newspapers on India's economy...")
 
-        if st.button("EXECUTE GROUNDED AI INVESTIGATION", type="primary", key="btn_exec_rag") and rag_input.strip():
+        btn_clicked = st.button("EXECUTE GROUNDED AI INVESTIGATION", type="primary", key="btn_exec_rag")
+        current_q = rag_input.strip()
+
+        if btn_clicked and current_q:
             with st.spinner("Executing query router, retrieval pipeline & grounded LLM synthesis..."):
-                rag_res, rag_ok = post_api("/api/ai/ask", {"question": rag_input.strip()})
+                rag_res, rag_ok = post_api("/api/ai/ask", {"question": current_q})
 
             if not rag_ok:
                 from ai.rag_engine import run_agentic_rag
                 try:
-                    rag_res = run_agentic_rag(rag_input.strip())
+                    rag_res = run_agentic_rag(current_q)
                     rag_ok = True
                 except Exception as e:
                     st.error(f"Error executing grounded synthesis: {e}")
+                    rag_ok = False
 
             if rag_ok:
-                answer = rag_res.get("answer", "")
-                intent_lbl = rag_res.get("intent", "TOPIC_SEARCH")
-                sources = [s for s in (first_present(rag_res, ["sources"], []) or []) if isinstance(s, dict)]
+                st.session_state["rag_result"] = rag_res
+                st.session_state["rag_query"] = current_q
 
-                # System Observability & Tool Analysis Trace
+        # Display persisted RAG result if query matches
+        saved_res = st.session_state.get("rag_result")
+        saved_q = st.session_state.get("rag_query")
+
+        if saved_res and current_q and (saved_q == current_q or btn_clicked):
+            rag_res = saved_res
+            answer = rag_res.get("answer", "")
+            intent_lbl = rag_res.get("intent", "TOPIC_SEARCH")
+            sources = [s for s in (first_present(rag_res, ["sources"], []) or []) if isinstance(s, dict)]
+
+            # System Observability & Tool Analysis Trace
+            st.markdown(f"""
+                <div style="background:rgba(0,210,255,0.05); border:1px solid rgba(0,210,255,0.2); padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:12px; color:{COLORS['muted']};">
+                    Intent Detected: <b style="color:{COLORS['cyan']};">{intent_lbl}</b> | Retrieval Engine: <b style="color:{COLORS['cyan']};">{retrieval_mode_opt}</b> | RAG Evidence Context: <b style="color:{COLORS['green']};">{len(sources)} Verified Articles</b>
+                </div>
+            """, unsafe_allow_html=True)
+
+            if "INSUFFICIENT EVIDENCE" in answer.upper() or not answer:
                 st.markdown(f"""
-                    <div style="background:rgba(0,210,255,0.05); border:1px solid rgba(0,210,255,0.2); padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:12px; color:{COLORS['muted']};">
-                        Intent Detected: <b style="color:{COLORS['cyan']};">{intent_lbl}</b> | Retrieval Engine: <b style="color:{COLORS['cyan']};">{retrieval_mode_opt}</b> | RAG Evidence Context: <b style="color:{COLORS['green']};">{len(sources)} Verified Articles</b>
+                    <div class="card-box" style="border-left:4px solid {COLORS['orange']}; background:rgba(255,159,28,0.08); padding:16px;">
+                        <div style="font-size:15px; font-weight:800; color:{COLORS['orange']};">⚠️ INSUFFICIENT EVIDENCE DETECTED</div>
+                        <div style="font-size:13px; color:#E2E8F0; margin-top:6px;">
+                            I couldn't find enough verified evidence in the indexed news database to answer this question reliably.
+                        </div>
                     </div>
                 """, unsafe_allow_html=True)
-
-                if "INSUFFICIENT EVIDENCE" in answer.upper() or not answer:
-                    st.markdown(f"""
-                        <div class="card-box" style="border-left:4px solid {COLORS['orange']}; background:rgba(255,159,28,0.08); padding:16px;">
-                            <div style="font-size:15px; font-weight:800; color:{COLORS['orange']};">⚠️ INSUFFICIENT EVIDENCE DETECTED</div>
-                            <div style="font-size:13px; color:#E2E8F0; margin-top:6px;">
-                                I couldn't find enough verified evidence in the indexed news database to answer this question reliably.
-                            </div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""
-                        <div class="card-box" style="border-left:4px solid {COLORS['cyan']}; background:#121824; font-size:14.5px; line-height:1.6; color:#E2E8F0; padding:16px;">
-                            <div style="font-size:11px; font-weight:800; color:{COLORS['cyan']}; margin-bottom:8px; text-transform:uppercase;">SYNTHESIZED AI ANALYSIS</div>
-                            {answer}
-                        </div>
-                    """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                    <div class="card-box" style="border-left:4px solid {COLORS['cyan']}; background:#121824; font-size:14.5px; line-height:1.6; color:#E2E8F0; padding:16px;">
+                        <div style="font-size:11px; font-weight:800; color:{COLORS['cyan']}; margin-bottom:8px; text-transform:uppercase;">SYNTHESIZED AI ANALYSIS</div>
+                        {answer}
+                    </div>
+                """, unsafe_allow_html=True)
 
                 # Grounded Citations & Sources
                 if sources:
