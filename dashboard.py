@@ -710,6 +710,25 @@ st.markdown(f"""
     div[data-testid="stExpander"] details summary:hover span {{
         color: {COLORS['cyan']} !important;
     }}
+    
+    /* High-Visibility Dark Mode Input & Textarea Styling */
+    .stTextInput input, .stTextArea textarea, div[data-baseweb="input"] input, div[data-baseweb="textarea"] textarea {{
+        background-color: #121824 !important;
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+        border: 1px solid rgba(76, 215, 246, 0.35) !important;
+        border-radius: 6px !important;
+        font-size: 14px !important;
+    }}
+    .stTextInput input:focus, .stTextArea textarea:focus, div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within {{
+        border-color: {COLORS['cyan']} !important;
+        box-shadow: 0 0 8px rgba(76, 215, 246, 0.4) !important;
+        background-color: #161E2E !important;
+    }}
+    .stTextInput label, .stTextArea label, div[data-widget="stTextInput"] label, div[data-widget="stTextArea"] label {{
+        color: #DFE2EE !important;
+        font-weight: 600 !important;
+    }}
 
     .section-title {{
         font-size: 13.5px;
