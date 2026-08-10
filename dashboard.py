@@ -413,6 +413,15 @@ def mongo_fallback_cross_source(window_str: str = "24h") -> dict:
             {"topic": "Global Tech Rally & Semiconductor Supply Chain", "sources_count": 3, "sources": ["The Hindu", "Economic Times", "Hindustan Times"], "article_count": 76}
         ]
     }
+
+
+def mongo_fallback_search(query: str, limit: int = 15) -> list:
+    """Advanced MongoDB Search with Synonym Expansion, Weighted Relevance Scoring, and Term Highlighting."""
+    db = _get_mongo_db()
+    if db is None or not query.strip():
+        return []
+    try:
+        col = db["realtime_articles"]
         q_raw = query.strip()
         q_lower = q_raw.lower()
         
