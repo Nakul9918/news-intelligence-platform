@@ -1303,12 +1303,26 @@ def investigate_topic_intelligence(coll, q: str = "RBI rate", window: str = "24h
     # Source comparison breakdown across the 4 major newspapers
     source_comparison = {}
     for pub in TARGET_SOURCES:
-        pub_docs = [a for a in sample_articles if pub.lower() in a["source"].lower()]
-        pub_vol = source_counts.get(pub, len(pub_docs))
+        pub_docs = [a for a in sample_articles if pub.lower() in str(a.get("source","")).lower()]
+        pub_vol = sum(cnt for sc_name, cnt in source_counts.items() if pub.lower() in str(sc_name).lower())
+        if pub_vol == 0:
+            pub_vol = len(pub_docs)
+            
+        pub_sentiments = Counter([a.get("sentiment", "Neutral") for a in pub_docs if a.get("sentiment") and str(a.get("sentiment")) != "None"])
+        pub_categories = Counter([a.get("category", "General") for a in pub_docs if a.get("category") and str(a.get("category")) != "None"])
+        
+        pub_top_sent = pub_sentiments.most_common(1)[0][0] if pub_sentiments else top_sent
+        pub_top_cat = pub_categories.most_common(1)[0][0] if pub_categories else top_cat
+        
+        if pub_top_sent in [None, "None", ""]:
+            pub_top_sent = "Neutral"
+        if pub_top_cat in [None, "None", ""]:
+            pub_top_cat = "General"
+
         source_comparison[pub] = {
             "total_coverage_volume": pub_vol,
-            "top_sentiment": top_sent,
-            "top_category": top_cat,
+            "top_sentiment": pub_top_sent,
+            "top_category": pub_top_cat,
             "sample_articles": pub_docs[:3]
         }
 

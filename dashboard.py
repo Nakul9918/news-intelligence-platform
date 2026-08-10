@@ -1747,13 +1747,38 @@ elif page == "07. TOPIC & KEYWORD":
         p_cols = st.columns(4)
         for idx, pub in enumerate(TARGET_SOURCES):
             p_data = src_comp.get(pub, {})
+            vol_cnt = p_data.get('total_coverage_volume')
+            if vol_cnt is None:
+                vol_cnt = p_data.get('article_count', 0)
+
+            if vol_cnt == 0:
+                try:
+                    db = _get_mongo_db()
+                    if db is not None:
+                        vol_cnt = db["realtime_articles"].count_documents({
+                            "$or": [
+                                {"source.name": {"$regex": pub, "$options": "i"}},
+                                {"source": {"$regex": pub, "$options": "i"}}
+                            ]
+                        })
+                except Exception:
+                    vol_cnt = len(p_data.get("sample_articles", []))
+
+            tone_val = p_data.get('top_sentiment')
+            if tone_val in [None, 'None', '', 'null']:
+                tone_val = 'Neutral'
+
+            cat_val = p_data.get('top_category')
+            if cat_val in [None, 'None', '', 'null']:
+                cat_val = 'General'
+
             with p_cols[idx]:
                 st.markdown(f"""
                     <div class="card-box" style="height:100%;">
                         <div style="font-weight:800; font-size:14px; color:{COLORS['cyan']}; border-bottom:1px solid {COLORS['card_border']}; padding-bottom:6px; margin-bottom:8px;">{pub}</div>
-                        <div style="font-size:11px; color:{COLORS['muted']};">Volume: <b>{p_data.get('total_coverage_volume',0)} articles</b></div>
-                        <div style="font-size:11px; color:{COLORS['muted']};">Tone: <b>{p_data.get('top_sentiment','Neutral')}</b></div>
-                        <div style="font-size:11px; color:{COLORS['muted']};">Top Category: <b>{p_data.get('top_category','General')}</b></div>
+                        <div style="font-size:11px; color:{COLORS['muted']};">Volume: <b>{vol_cnt} articles</b></div>
+                        <div style="font-size:11px; color:{COLORS['muted']};">Tone: <b>{tone_val}</b></div>
+                        <div style="font-size:11px; color:{COLORS['muted']};">Top Category: <b>{cat_val}</b></div>
                     </div>
                 """, unsafe_allow_html=True)
                 for art in p_data.get("sample_articles", []):
