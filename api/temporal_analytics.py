@@ -94,7 +94,7 @@ def extract_sentiment_label(article: dict) -> str:
 def get_recommended_bucket(window_str: str) -> str:
     """Determine optimal granularity bucket for a given date window."""
     w = window_str.lower()
-    if w in ["1h", "6h", "24h", "today"]:
+    if w in ["1h", "6h", "24h", "48h", "2d", "today"]:
         return "1h"
     elif w in ["7d", "30d", "month", "this_month"]:
         return "1d"
@@ -135,6 +135,8 @@ def get_window_cutoff(coll, window_str: str) -> Tuple[datetime, datetime]:
         start_dt = now - timedelta(hours=6)
     elif w in ["24h", "today"]:
         start_dt = now - timedelta(hours=24)
+    elif w in ["48h", "2d", "2days"]:
+        start_dt = now - timedelta(hours=48)
     elif w == "7d":
         start_dt = now - timedelta(days=7)
     elif w in ["30d", "month", "this_month"]:
