@@ -3,6 +3,7 @@ Source-Grounded LLM Answer Generator with Extractive Fallback
 """
 
 import os
+import re
 from typing import List, Dict, Any, Optional
 from ai.config import GEMINI_API_KEY, AI_MODEL, AI_TEMPERATURE
 
@@ -25,15 +26,37 @@ def generate_grounded_answer(
             "provider": "grounding_guardrail"
         }
 
-    # Subject Term Relevance Guardrail:
-    # If the user query specifies subject nouns not present in any retrieved article title/summary, reject as insufficient evidence.
-    ignored_words = {"what", "where", "when", "which", "about", "according", "indian", "express", "hindu", "times", "happened", "year", "news", "show", "tell", "give"}
-    q_words = [w.strip("?,!.") for w in question.lower().split() if len(w) > 3 and w.strip("?,!.") not in ignored_words]
+    # 2. Prompt Injection Defense: Sanitize untrusted context text to prevent system overrides
+    sanitized_context = context_str or "No direct article text retrieved."
+    injection_patterns = [
+        r"(?i)ignore\s+previous\s+instructions",
+        r"(?i)disregard\s+all\s+prior",
+        r"(?i)you\s+are\s+now",
+        r"(?i)system\s*prompt:",
+        r"(?i)override\s+safety"
+    ]
+    for pat in injection_patterns:
+        sanitized_context = re.sub(pat, "[FILTERED INJECTION CONTENT]", sanitized_context)
+
+    # 3. Subject Term Relevance & Hallucination Guardrail
+    ignored_words = {
+        "what", "where", "when", "which", "who", "whom", "whose", "why", "how",
+        "about", "according", "indian", "express", "hindu", "times", "happened",
+        "year", "news", "show", "tell", "give", "latest", "recent", "stories",
+        "today", "yesterday", "week", "month", "compare", "summary", "article"
+    }
+    q_words = [w.strip("?,!.\"')(").lower() for w in question.split() if len(w.strip("?,!.\"')(")) > 3 and w.strip("?,!.\"')(").lower() not in ignored_words]
     
     if q_words and citations:
-        combined_text = " ".join([c.get("title", "").lower() + " " + c.get("summary", "").lower() for c in citations])
+        combined_text = " ".join([
+            (c.get("title") or "").lower() + " " +
+            (c.get("summary") or "").lower() + " " +
+            (c.get("source") or "").lower() + " " +
+            (c.get("category") or "").lower()
+            for c in citations
+        ])
         has_match = any(w in combined_text for w in q_words)
-        if not has_match and intent in ["ARTICLE_SEARCH", "GENERAL_NEWS_QUERY", "SUMMARY"]:
+        if not has_match and intent in ["ARTICLE_SEARCH", "GENERAL_NEWS_QUERY", "SUMMARY", "DATE_RANGE_QUERY"]:
             return {
                 "answer": "Insufficient evidence was found in the indexed news data to answer this question.",
                 "status": "INSUFFICIENT_EVIDENCE",
@@ -59,7 +82,7 @@ INTENT: {intent}
 
 {f"ANALYTICS SUMMARY:\n{analytics_summary}\n" if analytics_summary else ""}
 RETRIEVED NEWS EVIDENCE:
-{context_str if context_str else "No direct article text retrieved."}
+{sanitized_context}
 """
 
     # 2. Try Gemini API if API Key is configured
@@ -90,7 +113,12 @@ RETRIEVED NEWS EVIDENCE:
     if citations:
         lines.append(f"\nKey news developments from indexed articles ({len(citations)} sources retrieved):")
         for i, c in enumerate(citations[:5], 1):
-            lines.append(f"{i}. **[{c['source']}]** {c['title']} ({c['published_date'][:10]}) — Category: {c['category']} | Sentiment: {c['sentiment']}")
+            src_lbl = c.get('source') or 'Unknown'
+            title_lbl = c.get('title') or 'Untitled'
+            pub_lbl = str(c.get('published_date') or 'N/A')[:10]
+            cat_lbl = c.get('category') or 'General'
+            sent_lbl = c.get('sentiment') or 'Neutral'
+            lines.append(f"{i}. **[{src_lbl}]** {title_lbl} ({pub_lbl}) — Category: {cat_lbl} | Sentiment: {sent_lbl}")
 
     answer_text = "\n".join(lines) if lines else "Insufficient evidence was found in the indexed news data."
     

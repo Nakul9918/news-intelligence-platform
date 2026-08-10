@@ -59,7 +59,9 @@ def build_rag_context(articles: List[Dict[str, Any]], max_articles: int = 8) -> 
             "published_date": str(pub_date),
             "category": cat_label,
             "sentiment": sent_label,
-            "url": url
+            "summary": summary if len(summary) > 20 else content[:180],
+            "url": url,
+            "link": url
         })
 
     context_str = "\n".join(context_lines)

@@ -67,7 +67,8 @@ SPELLING_VOCABULARY = [
     "world", "india", "environment", "economic", "times", "hindu", "express", "hindustan",
     "market", "inflation", "elections", "cricket", "olympics", "government", "police",
     "court", "accused", "investigation", "narendra", "modi", "rbi", "reliance", "tata",
-    "today", "yesterday", "month", "week", "developing", "timeline", "compare", "spikes"
+    "today", "yesterday", "month", "week", "developing", "timeline", "compare", "spikes",
+    "sentiment", "feeling", "mood", "around", "covering", "event"
 ]
 
 
@@ -188,13 +189,13 @@ def analyze_query(query: str) -> Dict[str, Any]:
     elif any(term in q_lower for term in ["timeline", "what happened next", "story evolution", "after this", "follow-up"]):
         intent = "STORY_TIMELINE"
         tools = ["get_story_timeline", "search_hybrid"]
-    elif any(term in q_lower for term in ["compare", "versus", "vs", "difference", "four newspapers", "all newspapers"]):
-        intent = "NEWSPAPER_COMPARISON"
-        tools = ["get_four_newspaper_comparison", "get_cross_source_analytics", "search_hybrid"]
-    elif any(term in q_lower for term in ["cross-source", "multiple sources", "different sources", "covered by multiple"]):
+    elif any(term in q_lower for term in ["cross-source", "multiple sources", "different sources", "covered by multiple", "covering this event", "newspapers covering"]):
         intent = "CROSS_SOURCE_QUERY"
         tools = ["get_cross_source_analytics", "search_hybrid"]
-    elif any(term in q_lower for term in ["trending", "trend", "emerging", "popular"]):
+    elif any(term in q_lower for term in ["compare", "versus", "vs", "difference", "four newspapers", "all newspapers", "economic times and the hindu"]):
+        intent = "NEWSPAPER_COMPARISON"
+        tools = ["get_four_newspaper_comparison", "get_cross_source_analytics", "search_hybrid"]
+    elif any(term in q_lower for term in ["trending", "trend", "emerging", "popular", "increasing", "biggest news trends"]):
         intent = "TREND_ANALYSIS"
         tools = ["get_emerging_keywords", "get_emerging_entities", "get_volume_analytics"]
     elif any(term in q_lower for term in ["spike", "unusual", "surge", "anomaly"]):
@@ -203,14 +204,20 @@ def analyze_query(query: str) -> Dict[str, Any]:
     elif any(term in q_lower for term in ["sentiment", "feeling", "mood", "positive news", "negative news"]):
         intent = "SENTIMENT_ANALYSIS"
         tools = ["get_sentiment_analytics", "search_hybrid"]
-    elif any(term in q_lower for term in ["entity", "person", "company", "place", "organization", "leader"]):
+    elif any(term in q_lower for term in ["entity", "person", "people", "mentioned most", "company", "place", "organization", "leader"]):
         intent = "ENTITY_DEEPDIVE"
-        tools = ["get_keyword_entity_intelligence", "search_hybrid"]
+        tools = ["get_emerging_entities", "get_keyword_entity_intelligence", "search_hybrid"]
+    elif any(term in q_lower for term in ["summarize", "summary", "brief", "overview"]):
+        intent = "SUMMARY"
+        tools = ["search_hybrid"]
     elif start_date or end_date:
         intent = "DATE_RANGE_QUERY"
         tools = ["get_date_explorer_analytics", "search_hybrid"]
-    else:
+    elif any(term in q_lower for term in ["recent", "latest", "show me", "news about"]):
         intent = "ARTICLE_SEARCH"
+        tools = ["search_hybrid"]
+    else:
+        intent = "GENERAL_NEWS_QUERY"
         tools = ["search_hybrid"]
 
     return {
