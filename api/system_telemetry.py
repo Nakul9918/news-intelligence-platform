@@ -271,9 +271,14 @@ def get_source_freshness_telemetry(coll) -> Dict[str, Any]:
     """Queries latest article timestamp per publisher."""
     freshness = {}
     for pub in TARGET_SOURCES:
-        doc = coll.find_one({"source": {"$regex": pub, "$options": "i"}}, sort=[("created_at", -1)])
+        doc = (
+            coll.find_one({"source.name": pub}, sort=[("_id", -1)]) or
+            coll.find_one({"source": pub}, sort=[("_id", -1)]) or
+            coll.find_one({"source.name": {"$regex": pub, "$options": "i"}}, sort=[("_id", -1)]) or
+            coll.find_one({"source": {"$regex": pub, "$options": "i"}}, sort=[("_id", -1)])
+        )
         if doc:
-            latest_ts = str(doc.get("published_date") or doc.get("created_at"))
+            latest_ts = str(doc.get("published_date") or doc.get("created_at") or doc.get("fetched_at") or "Active")
             status = "FRESH"
         else:
             latest_ts = "N/A"

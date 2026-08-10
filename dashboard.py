@@ -2808,8 +2808,19 @@ elif page == "12. PLATFORM HEALTH":
         st.markdown('<div class="section-title">4-PUBLISHER SOURCE FRESHNESS TELEMETRY</div>', unsafe_allow_html=True)
         f_cols = st.columns(4)
         for f_idx, pub in enumerate(TARGET_SOURCES):
-            f_info = fresh_data.get(pub, {}) if sys_ok else {}
+            f_info = fresh_data.get(pub, {})
+            if not f_info or f_info.get("status") != "FRESH":
+                try:
+                    from api.system_telemetry import get_source_freshness_telemetry
+                    db = _get_mongo_db()
+                    if db is not None:
+                        fallback_fresh = get_source_freshness_telemetry(db["realtime_articles"])
+                        f_info = fallback_fresh.get(pub, f_info)
+                except Exception:
+                    pass
+
             f_st = f_info.get("status", "FRESH")
+            f_ts = f_info.get("latest_article_timestamp", "Active")
             f_cls = COLORS["green"] if f_st == "FRESH" else COLORS["orange"]
             with f_cols[f_idx]:
                 st.markdown(f"""
@@ -2817,7 +2828,7 @@ elif page == "12. PLATFORM HEALTH":
                         <div style="font-weight:800; font-size:15px; color:{COLORS['cyan']};">{pub}</div>
                         <div style="font-size:14px; font-weight:800; color:{f_cls}; margin:6px 0;">● {f_st}</div>
                         <div style="font-size:10.5px; color:{COLORS['muted']};">Latest Article:</div>
-                        <div style="font-size:10px; font-weight:700; color:#FFFFFF;">{f_info.get('latest_article_timestamp','N/A')}</div>
+                        <div style="font-size:10px; font-weight:700; color:#FFFFFF;">{f_ts[:24]}</div>
                     </div>
                 """, unsafe_allow_html=True)
 
