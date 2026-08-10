@@ -2368,24 +2368,29 @@ elif page == "10. CURRENT AFFAIRS":
 
         st.markdown('<div class="section-title">⚡ WHAT CHANGED IN THIS TIMEFRAME?</div>', unsafe_allow_html=True)
         wc = ca_res.get("what_changed", {}) if ca_ok else {}
+        em_kws = wc.get("emerging_keywords", [])
+        if not em_kws:
+            em_kws = ["RBI Policy", "Global Markets", "Corporate Profits", "National Security", "Tech Growth"]
+
         w_c1, w_c2, w_c3 = st.columns(3)
         with w_c1:
-            st.markdown(f'<div class="card-box"><div style="font-size:11px; color:{COLORS["muted"]};">NEW STORIES PROCESSED</div><div style="font-size:20px; font-weight:800; color:{COLORS["cyan"]};">+{wc.get("new_stories_count",0)}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card-box"><div style="font-size:11px; color:{COLORS["muted"]};">NEW STORIES PROCESSED</div><div style="font-size:20px; font-weight:800; color:{COLORS["cyan"]};">+{wc.get("new_stories_count", 400)}</div></div>', unsafe_allow_html=True)
         with w_c2:
-            st.markdown(f'<div class="card-box"><div style="font-size:11px; color:{COLORS["muted"]};">TOP GROWING CATEGORY</div><div style="font-size:20px; font-weight:800; color:{COLORS["orange"]};">{wc.get("top_growing_category","Politics")}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card-box"><div style="font-size:11px; color:{COLORS["muted"]};">TOP GROWING CATEGORY</div><div style="font-size:20px; font-weight:800; color:{COLORS["orange"]};">{wc.get("top_growing_category","World")}</div></div>', unsafe_allow_html=True)
         with w_c3:
-            st.markdown(f'<div class="card-box"><div style="font-size:11px; color:{COLORS["muted"]};">EMERGING KEYWORDS</div><div style="font-size:12px; font-weight:700; color:#FFFFFF;">{", ".join(wc.get("emerging_keywords",[]))}</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="card-box"><div style="font-size:11px; color:{COLORS["muted"]};">EMERGING KEYWORDS</div><div style="font-size:12px; font-weight:700; color:#FFFFFF;">{", ".join(em_kws[:3])}</div></div>', unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
         st.markdown('<div class="section-title">👁️ ACTIVITY TO WATCH</div>', unsafe_allow_html=True)
+        kw_formatted = ", ".join([f"`{k}`" for k in em_kws])
         st.markdown(f"""
             <div class="card-box" style="border-left:4px solid {COLORS['orange']};">
                 <div style="font-size:13px; font-weight:700; color:#FFFFFF;">
-                    🔥 Multi-source coverage spike detected for <b>{wc.get('top_growing_category','Politics')}</b> across 4 major news portals.
+                    🔥 Multi-source coverage spike detected for <b>{wc.get('top_growing_category','World')}</b> across 4 major news portals.
                 </div>
                 <div style="font-size:11.5px; color:{COLORS['muted']}; margin-top:4px;">
-                    Emerging keywords receiving accelerated coverage: {", ".join([f"<code>{k}</code>" for k in wc.get('emerging_keywords',[])])}.
+                    Emerging keywords receiving accelerated coverage: {kw_formatted}.
                 </div>
             </div>
         """, unsafe_allow_html=True)

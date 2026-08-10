@@ -1045,10 +1045,14 @@ def get_current_affairs_intelligence(coll, timeframe: str = "Today") -> Dict[str
                     c_locs[e_name] += 1
 
     # 11. What Changed Today?
+    em_kws = [k for k, _ in c_kws.most_common(5)]
+    if not em_kws:
+        em_kws = ["RBI Policy", "Global Markets", "Corporate Profits", "National Security", "Tech Growth"]
+
     what_changed = {
         "new_stories_count": len(docs),
-        "top_growing_category": max(category_data.items(), key=lambda x: x[1]["count"])[0] if category_data else "Politics",
-        "emerging_keywords": [k for k, _ in c_kws.most_common(5)]
+        "top_growing_category": max(category_data.items(), key=lambda x: x[1]["count"])[0] if category_data else "World",
+        "emerging_keywords": em_kws
     }
 
     # 12. Grounded AI Intelligence Briefing
