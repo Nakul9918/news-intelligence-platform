@@ -101,13 +101,23 @@ def start_consumer(single_run=False, max_messages=None):
 
     client, collection = get_mongo_collection()
 
-    consumer = KafkaConsumer(
-        KAFKA_TOPIC,
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        group_id="news-realtime-consumer-v3",
-        enable_auto_commit=False,  # Manual commit after Mongo persistence
-        value_deserializer=lambda m: m.decode("utf-8", errors="ignore")
-    )
+    consumer = None
+    while running:
+        try:
+            consumer = KafkaConsumer(
+                KAFKA_TOPIC,
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                group_id="news-realtime-consumer-v3",
+                enable_auto_commit=False,  # Manual commit after Mongo persistence
+                value_deserializer=lambda m: m.decode("utf-8", errors="ignore")
+            )
+            break
+        except Exception as e:
+            if single_run:
+                logger.warning(f"Kafka Consumer unavailable ({e}). Exiting single run mode.")
+                return
+            logger.warning(f"Kafka Consumer unavailable ({e}). Retrying in 10 seconds...")
+            time.sleep(10)
 
     consumed_count = 0
 
@@ -255,8 +265,10 @@ def start_consumer(single_run=False, max_messages=None):
         logger.exception(f"Unexpected Consumer Error: {e}")
     finally:
         logger.info("Closing Kafka Consumer & MongoDB client...")
-        consumer.close()
-        client.close()
+        if consumer:
+            consumer.close()
+        if client:
+            client.close()
         logger.info(f"Realtime Consumer Shutdown complete. Total processed: {consumed_count}")
 
 if __name__ == "__main__":
